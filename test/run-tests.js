@@ -335,7 +335,7 @@ function setWeek(g, setId, week) {
   sh.setCell(row, col, week);
 }
 function addSet2(g) {
-  g.sheet('세트').addRow({ 세트ID: 'DEMO-A-2', 세트이름: '[가짜] 2주차 점검', 학교: '샘플고A', 사용: 'Y', 주차: '2주차' });
+  g.sheet('세트').addRow({ 세트ID: 'DEMO-A-2', 세트이름: '[가짜] 2주차 점검', 학교: '샘플고A', 사용: 'Y', 주차: '2주차', 결과공개: 'Y' });
   ['1', '2', '3', '4'].forEach((k, i) => g.sheet('문항').addRow({ 세트ID: 'DEMO-A-2', 번호: i + 1, 정답: k, 단원: '고전시가', 세부항목: i < 2 ? '표현상 특징' : '화자의 태도' }));
 }
 
@@ -440,6 +440,96 @@ test('선생님 누적 리포트: 학교별 학생 × 주차 점수, 주차별 �
   assert.deepStrictEqual(b.students.map((x) => x.name), ['가상학생07', '가상학생08', '가상학생09']);
   const unknown = ok(g.call('teacherTrend', { token: tt, school: '없는학교' }));
   assert.strictEqual(unknown.school, '샘플고A');
+});
+
+/* ── 세트별 결과공개 (v1.2.0) ── */
+
+function setCell(g, setId, header, value) {
+  const sh = g.sheet('세트');
+  const col = sh.data[0].indexOf(header) + 1;
+  const row = sh.objects().find((x) => x.세트ID === setId)._row;
+  sh.setCell(row, col, value);
+}
+
+test('시트 탭 만들기: 세트 탭에 결과공개 칸이 생긴다', () => {
+  const g = loadGas();
+  g.ctx.setupSheets_();
+  assert.ok(g.sheet('세트').data[0].includes('결과공개'));
+});
+
+test('결과공개가 비어 있으면: 제출 뒤 점수·틀린 문항 없이 내가 칠한 답만, 시트에는 점수 기록', () => {
+  const g = fresh();
+  setCell(g, 'DEMO-A-1', '결과공개', '');
+  const t = studentReady(g, '샘플고A', '가상학생01');
+  const r = ok(g.call('submit', { token: t, setId: 'DEMO-A-1', answers: Object.assign({}, KEY_A, { 1: [5], 12: [] }) }));
+  assert.strictEqual(r.revealed, false);
+  assert.strictEqual(r.result, undefined);
+  const txt = JSON.stringify(r);
+  assert.ok(!/score|wrong|correct|점수/.test(txt), '점수 관련 값이 있으면 안 됨: ' + txt);
+  assert.deepStrictEqual(r.myAnswers.slice(0, 2), [{ no: 1, choices: [5] }, { no: 2, choices: [2, 4] }]);
+  assert.deepStrictEqual(r.myAnswers[11], { no: 12, choices: [] });
+  const row = g.sheet('제출').objects()[0];
+  assert.strictEqual(Number(row.점수), 83.3, '시트에는 점수가 그대로 기록');
+  const mine = ok(g.call('myResult', { token: t, setId: 'DEMO-A-1' }));
+  assert.strictEqual(mine.revealed, false);
+  assert.strictEqual(mine.result, undefined);
+  assert.deepStrictEqual(mine.myAnswers, r.myAnswers);
+  const home = ok(g.call('studentHome', { token: t }));
+  const a = home.sets.find((x) => x.setId === 'DEMO-A-1');
+  assert.deepStrictEqual([a.done, a.revealed, a.score], [true, false, null]);
+  // 선생님 화면에는 점수가 그대로
+  const tr = ok(g.call('teacherToday', { token: teacherReady(g) }));
+  assert.strictEqual(tr.sets[0].rows[0].score, 83.3);
+  assert.strictEqual(tr.sets[0].reveal, false);
+});
+
+test('결과공개 Y: 지금처럼 점수와 틀린 문항을 보여 줌', () => {
+  const g = fresh();
+  const t = studentReady(g, '샘플고A', '가상학생01');
+  const r = ok(g.call('submit', { token: t, setId: 'DEMO-A-1', answers: KEY_A }));
+  assert.strictEqual(r.revealed, true);
+  assert.strictEqual(r.result.score, 100);
+  assert.strictEqual(ok(g.call('studentHome', { token: t })).sets.find((x) => x.setId === 'DEMO-A-1').score, 100);
+});
+
+test('나중에 결과공개를 Y로 바꾸면 그때부터 학생이 결과를 봄', () => {
+  const g = fresh();
+  setCell(g, 'DEMO-A-1', '결과공개', '');
+  const t = studentReady(g, '샘플고A', '가상학생01');
+  ok(g.call('submit', { token: t, setId: 'DEMO-A-1', answers: Object.assign({}, KEY_A, { 3: [2] }) }));
+  assert.strictEqual(ok(g.call('myResult', { token: t, setId: 'DEMO-A-1' })).revealed, false);
+  setCell(g, 'DEMO-A-1', '결과공개', 'Y');
+  const mine = ok(g.call('myResult', { token: t, setId: 'DEMO-A-1' }));
+  assert.strictEqual(mine.revealed, true);
+  assert.deepStrictEqual(mine.result.wrong, [3]);
+});
+
+test('결과공개 칸이 아예 없는 시트: 숨김으로 처리되고 다른 기능은 그대로', () => {
+  const g = fresh();
+  const sh = g.sheet('세트');
+  const col = sh.data[0].indexOf('결과공개');
+  sh.data.forEach((row) => { row[col] = ''; });
+  const t = studentReady(g, '샘플고A', '가상학생01');
+  const r = ok(g.call('submit', { token: t, setId: 'DEMO-A-1', answers: KEY_A }));
+  assert.strictEqual(r.revealed, false);
+  ok(g.call('teacherToday', { token: teacherReady(g) }));
+});
+
+test('내 성적 추이: 결과를 공개한 세트만 들어가고, 숨긴 세트 수를 알려 줌', () => {
+  const g = fresh();
+  addSet2(g);
+  setCell(g, 'DEMO-A-2', '결과공개', '');
+  const t = studentReady(g, '샘플고A', '가상학생01');
+  ok(g.call('submit', { token: t, setId: 'DEMO-A-1', answers: KEY_A }));
+  ok(g.call('submit', { token: t, setId: 'DEMO-A-2', answers: { 1: [5], 2: [5], 3: [5], 4: [5] } }));
+  const r = ok(g.call('myTrend', { token: t }));
+  assert.deepStrictEqual(r.weeks.map((w) => w.label), ['1주차']);
+  assert.strictEqual(r.hidden, 1);
+  assert.strictEqual(r.submitted, 1);
+  assert.ok(!JSON.stringify(r).includes('2주차 점검'));
+  // 선생님 누적 리포트에는 숨긴 세트도 들어감
+  const tr = ok(g.call('teacherTrend', { token: teacherReady(g) }));
+  assert.deepStrictEqual(Object.keys(tr.students[0].weeks), ['1', '2']);
 });
 
 /* ── 실행 ── */

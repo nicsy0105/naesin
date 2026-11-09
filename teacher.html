@@ -101,7 +101,7 @@
 <body>
 <div id="app"></div>
 <script>
-const APP_VERSION = '1.1.0';
+const APP_VERSION = '1.2.0';
 const KEY = 'naesin.teacher';
 const $app = document.getElementById('app');
 let timer = null;
@@ -231,6 +231,7 @@ function renderSet(x) {
       el('h2', {}, x.title),
       x.school ? el('span', { class: 'tag' }, x.school) : el('span', { class: 'tag' }, '공통'),
       el('span', { class: 'tag' }, `제출 ${x.submitted}명`),
+      x.reveal === false ? el('span', { class: 'tag' }, '학생에게 점수 비공개') : x.reveal === true ? el('span', { class: 'tag' }, '학생에게 점수 공개') : null,
       x.missing && x.missing.length ? el('span', { class: 'tag alert' }, `미제출 ${x.missing.length}명`) : null),
     el('div', { class: 'stats' },
       stat('평균', fmt(x.avg), '점'), stat('최고', fmt(x.max), '점'), stat('최저', fmt(x.min), '점'),

@@ -148,13 +148,22 @@
   .wk-head span { font-weight: 700; font-variant-numeric: tabular-nums; }
   .wk-set { display: flex; justify-content: space-between; gap: 12px; font-size: 13px; color: var(--muted); margin-top: 4px; }
   .wk-set span:last-child { white-space: nowrap; font-variant-numeric: tabular-nums; }
+
+  /* 제출 완료 + 내가 칠한 답 (v1.2.0) */
+  .done-mark { width: 52px; height: 52px; border-radius: 50%; background: var(--ink); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 26px; font-weight: 800; margin: 0 auto 12px; }
+  .submitted-title { font-size: 28px; font-weight: 800; letter-spacing: -0.02em; margin: 6px 0 4px; }
+  .myans { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); column-gap: 14px; margin-top: 6px; }
+  .myans-cell { display: flex; align-items: center; gap: 10px; padding: 9px 2px; border-bottom: 1px solid #f1d5da; }
+  .myans-cell .no { width: 26px; text-align: right; color: var(--omr); font-weight: 800; font-variant-numeric: tabular-nums; }
+  .myans-cell .ch { font-size: 19px; font-weight: 700; letter-spacing: 1px; }
+  .myans-cell.blank .ch { font-size: 13px; color: var(--muted); font-weight: 600; letter-spacing: 0; }
 </style>
 </head>
 <body>
 <main id="app" class="app" aria-live="polite"></main>
 <div id="modal" class="modal" hidden></div>
 <script>
-const APP_VERSION = '1.1.0';
+const APP_VERSION = '1.2.0';
 const KEY = 'naesin.student';
 const $app = document.getElementById('app');
 const $modal = document.getElementById('modal');
@@ -314,8 +323,8 @@ async function showHome(notice) {
     done.length ? el('div', { class: 'section-title' }, '제출한 테스트') : null,
     done.map((x) => el('div', { class: 'set done' },
       el('div', { class: 'set-main' }, el('div', { class: 'set-title' }, x.title), el('div', { class: 'set-sub' }, `${x.count}문항 · 제출함`)),
-      el('div', { class: 'score' }, fmtScore(x.score), el('small', {}, '점')),
-      el('button', { class: 'btn small ghost', onclick: () => openResult(x.setId) }, '결과')
+      x.score != null ? el('div', { class: 'score' }, fmtScore(x.score), el('small', {}, '점')) : null,
+      el('button', { class: 'btn small ghost', onclick: () => openResult(x.setId) }, x.score != null ? '결과' : '내 답')
     )),
     el('button', { class: 'btn ghost', style: 'margin-top:18px', onclick: () => showTrend() }, '내 성적 추이 보기'),
     el('div', { class: 'links' },
@@ -398,7 +407,7 @@ async function showOmr(setId) {
       try {
         const r = await busy(go, '제출 중…', () => api('submit', { token: s.token, setId, answers }));
         closeModal(); store.del(draftKey);
-        showResult(r.title, r.result);
+        if (r.revealed === false) showSubmitted(r.title, r.myAnswers); else showResult(r.title, r.result);
       } catch (e) {
         closeModal();
         if (e.code === 'ALREADY') return openResult(setId);
@@ -412,7 +421,10 @@ async function showOmr(setId) {
 async function openResult(setId) {
   const s = session();
   loading();
-  try { const r = await api('myResult', { token: s.token, setId }); showResult(r.title, r.result); }
+  try {
+    const r = await api('myResult', { token: s.token, setId });
+    if (r.revealed === false) showSubmitted(r.title, r.myAnswers); else showResult(r.title, r.result);
+  }
   catch (e) { if (!handleCommon(e)) { showHome(); alertSheet(e.message); } }
 }
 function showResult(title, r) {
@@ -436,6 +448,26 @@ function showResult(title, r) {
   );
 }
 
+/* ── 제출 완료 + 내가 칠한 답 (v1.2.0: 결과를 공개하지 않은 세트) ── */
+const CIRCLED = ['', '①', '②', '③', '④', '⑤', '⑥', '⑦', '⑧', '⑨'];
+function showSubmitted(title, answers) {
+  const blanks = answers.filter((a) => !a.choices.length).length;
+  screen(
+    el('div', { class: 'card result-card' },
+      el('div', { class: 'done-mark', 'aria-hidden': 'true' }, '✓'),
+      el('div', { class: 'result-label' }, title),
+      el('div', { class: 'submitted-title' }, '제출 완료'),
+      el('div', { class: 'count' }, '답안지를 보고 직접 채점해 보세요.')),
+    el('div', { class: 'card' },
+      el('div', { class: 'card-head' }, el('label', {}, '내가 칠한 답'),
+        el('span', { class: 'hint' }, `${answers.length}문항${blanks ? ` · 비움 ${blanks}개` : ''}`)),
+      el('div', { class: 'myans' }, answers.map((a) => el('div', { class: 'myans-cell' + (a.choices.length ? '' : ' blank') },
+        el('span', { class: 'no' }, String(a.no)),
+        el('span', { class: 'ch' }, a.choices.length ? a.choices.map((c) => CIRCLED[c] || c).join('') : '비움'))))),
+    el('div', { style: 'margin-top:18px' }, el('button', { class: 'btn ghost', onclick: () => showHome() }, '목록으로'))
+  );
+}
+
 /* ── 내 성적 추이 (v1.1.0) ── */
 async function showTrend() {
   const s = session();
@@ -445,8 +477,10 @@ async function showTrend() {
   try { r = await api('myTrend', { token: s.token }); }
   catch (e) { if (!handleCommon(e)) { showHome(); alertSheet(e.message); } return; }
   const back = el('div', {}, el('button', { class: 'link', style: 'padding-left:0;margin-bottom:6px', onclick: () => showHome() }, '← 목록으로'));
+  const hiddenNote = r.hidden ? el('div', { class: 'hint', style: 'margin:-8px 0 14px' }, `점수를 공개하지 않은 테스트 ${r.hidden}개는 여기에 들어가지 않아요.`) : null;
   if (!r.submitted) {
-    screen(back, el('h1', {}, '내 성적 추이'), el('div', { class: 'card empty' }, '아직 기록이 없어요.', el('br'), '테스트를 풀면 주차별로 쌓여요.'));
+    screen(back, el('h1', {}, '내 성적 추이'), hiddenNote,
+      el('div', { class: 'card empty' }, r.hidden ? '아직 점수가 공개된 테스트가 없어요.' : '아직 기록이 없어요.', el('br'), '테스트를 풀면 주차별로 쌓여요.'));
     return;
   }
   const chartCard = r.weeks.length ? el('div', { class: 'card' },
@@ -467,7 +501,7 @@ async function showTrend() {
     r.weeks.slice().reverse().map((w) => el('div', { class: 'wk' },
       el('div', { class: 'wk-head' }, el('b', {}, w.label), el('span', {}, `${fmtScore(w.score)}점`)),
       w.sets.map((x) => el('div', { class: 'wk-set' }, el('span', {}, x.title), el('span', {}, `${fmtScore(x.score)}점`)))))) : null;
-  screen(back, el('h1', {}, '내 성적 추이'), chartCard, weakCard, listCard);
+  screen(back, el('h1', {}, '내 성적 추이'), hiddenNote, chartCard, weakCard, listCard);
 }
 function tagBar(t) {
   return el('div', { class: 'tagbar' },

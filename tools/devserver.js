@@ -25,11 +25,13 @@ function makeDemo() {
   const setSheet = g.sheet('세트');
   const wcol = setSheet.data[0].indexOf('주차') + 1;
   setSheet.setCell(setSheet.objects().find((x) => x.세트ID === 'DEMO-A-1')._row, wcol, 4);
+  // v1.2.0: 오늘 세트는 학생에게 점수 비공개(결과공개 칸 비움)
+  setSheet.setCell(setSheet.objects().find((x) => x.세트ID === 'DEMO-A-1')._row, setSheet.data[0].indexOf('결과공개') + 1, '');
   const tagsA = ['표현상 특징', '화자의 태도', '시어의 의미', '외적 준거 감상'];
   const keys = {};
   [1, 2, 3].forEach((w) => {
     const id = 'DEMO-A-W' + w;
-    setSheet.addRow({ 세트ID: id, 세트이름: `[가짜] ${w}주차 고전시가 점검`, 학교: '샘플고A', 사용: 'Y', 주차: w });
+    setSheet.addRow({ 세트ID: id, 세트이름: `[가짜] ${w}주차 고전시가 점검`, 학교: '샘플고A', 사용: 'Y', 주차: w, 결과공개: 'Y' });
     keys[id] = [];
     for (let i = 1; i <= 10; i++) {
       const k = ((i * 7 + w * 3) % 5) + 1;

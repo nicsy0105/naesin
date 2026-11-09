@@ -59,19 +59,41 @@ const { start } = require('./devserver');
     assert.ok((await page.textContent('.sheet')).includes('비운 문항 12번'));
     await page.screenshot({ path: 'shots/s5-confirm.png' });
     await page.click('.sheet .btn:not(.ghost)');
-    await page.waitForSelector('.result-card');
-    await page.screenshot({ path: 'shots/s6-result.png' });
-    assert.ok((await page.textContent('.big')).startsWith('83.3'));
-    assert.deepStrictEqual(await page.$$eval('.chip', (n) => n.map((x) => x.firstChild.textContent)), ['7', '12']);
+    // v1.2.0: 이 세트는 결과 비공개 → 제출 완료 + 내가 칠한 답
+    await page.waitForSelector('.submitted-title');
+    await page.screenshot({ path: 'shots/s6-submitted.png', fullPage: true });
+    const subText = await page.textContent('#app');
+    assert.ok(!subText.includes('83.3') && !subText.includes('틀린 문항'), '점수가 보이면 안 됨');
+    const cells = await page.$$eval('.myans-cell', (n) => n.map((x) => x.textContent));
+    assert.strictEqual(cells.length, 12);
+    assert.deepStrictEqual([cells[1], cells[6], cells[11]], ['2②④', '7①', '12비움']);
 
     await page.click('text=목록으로');
     await page.waitForSelector('.set.done');
-    assert.ok((await page.textContent('.set.done')).includes('83.3'));
+    const doneText = await page.textContent('.set.done');
+    assert.ok(!doneText.includes('83.3') && doneText.includes('내 답'));
+    await page.click('.set.done button');
+    await page.waitForSelector('.submitted-title');
+    await page.click('text=목록으로');
+    await page.waitForSelector('.set');
 
-    // v1.1.0: 방금 낸 학생의 추이 (4주차 하나)
+    // 결과를 공개한 세트(공통 어휘)는 예전처럼 점수가 나옴
+    await page.click('.set:has-text("공통 어휘 점검") button');
+    await page.waitForSelector('.omr-row');
+    for (const [no, c] of [[1, 1], [2, 2], [3, 3], [4, 1]]) await page.click(`button[aria-label="${no}번 문항 ${c}번"]`);
+    await page.click('.bottom .btn');
+    await page.waitForSelector('.sheet');
+    await page.click('.sheet .btn:not(.ghost)');
+    await page.waitForSelector('.result-card .big');
+    assert.ok((await page.textContent('.big')).startsWith('60'));
+    await page.screenshot({ path: 'shots/s6b-result-public.png' });
+    await page.click('text=목록으로');
+    await page.waitForSelector('.set.done');
+
+    // 방금 낸 학생의 추이: 공개 세트만 (공통 어휘는 주차 없음 → 그래프 없음)
     await page.click('text=내 성적 추이 보기');
-    await page.waitForSelector('.chart');
-    assert.ok((await page.textContent('#app')).includes('4주차'));
+    await page.waitForSelector('h1:has-text("내 성적 추이")');
+    assert.ok((await page.textContent('#app')).includes('공개하지 않은 테스트 1개'));
 
     // v1.1.0: 기록이 쌓인 학생의 추이 화면
     const sctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, locale: 'ko-KR' });
@@ -90,7 +112,8 @@ const { start } = require('./devserver');
     const trendText = await sp.textContent('#app');
     assert.ok(trendText.includes('시어의 의미'));
     assert.ok(!trendText.includes('가상학생01'), '다른 학생 이름이 보이면 안 됨');
-    assert.strictEqual(await sp.$$eval('.chart circle[r="4"]', (n) => n.length), 4);
+    assert.strictEqual(await sp.$$eval('.chart circle[r="4"]', (n) => n.length), 3);
+    assert.ok(trendText.includes('공개하지 않은 테스트 1개'));
 
     // 선생님
     const tctx = await browser.newContext({ viewport: { width: 1280, height: 900 }, deviceScaleFactor: 1.5, locale: 'ko-KR' });
@@ -103,8 +126,9 @@ const { start } = require('./devserver');
     await tp.click('button[type=submit]');
     await tp.waitForSelector('section.set');
     await tp.screenshot({ path: 'shots/t1-today.png', fullPage: true });
+    assert.ok((await tp.textContent('section.set:first-of-type .set-head')).includes('학생에게 점수 비공개'));
     const setTitles = await tp.$$eval('section.set h2', (n) => n.map((x) => x.textContent));
-    assert.deepStrictEqual(setTitles, ['[가짜] 고전시가 확인 테스트', '[가짜] 현대소설 확인 테스트']);
+    assert.deepStrictEqual(setTitles, ['[가짜] 고전시가 확인 테스트', '[가짜] 현대소설 확인 테스트', '[가짜] 공통 어휘 점검']);
     const firstNames = await tp.$$eval('section.set:first-of-type tbody td:first-child', (n) => n.map((x) => x.textContent));
     assert.strictEqual(firstNames.length, 5);
     assert.ok((await tp.textContent('section.set:first-of-type .missing')).includes('가상학생06'));

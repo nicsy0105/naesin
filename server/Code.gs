@@ -6,7 +6,7 @@
  *
  * 서버 파일을 고칠 때마다 아래 버전 번호를 올립니다.
  */
-const SERVER_VERSION = '1.0.0';
+const SERVER_VERSION = '1.2.0';
 
 const CONFIG = {
   TZ: 'Asia/Seoul',
@@ -40,13 +40,16 @@ const SHEET_DEFS = {
   sets: {
     name: '세트',
     headers: ['세트ID', '세트이름', '학교', '선지수', '사용', '메모'],
+    extra: ['주차', '결과공개'], // 주차: v1.1.0, 결과공개: v1.2.0. 칸이 없어도 동작
     text: ['세트ID', '세트이름', '학교', '사용'],
     notes: {
       '세트ID': '세트마다 겹치지 않게 정하는 이름. 예: 1107-가나고-1. 문항 탭에도 똑같이 써요.',
       '세트이름': '학생 화면에 보이는 이름이에요.',
       '학교': '이 학교 학생에게만 보여요. 비우면 모든 학생에게 보여요.',
       '선지수': '비우면 5지선다예요.',
-      '사용': 'Y라고 쓰면 학생 화면에 보여요. 지우면 안 보여요.'
+      '사용': 'Y라고 쓰면 학생 화면에 보여요. 지우면 안 보여요.',
+      '주차': '몇 주차 세트인지 숫자로 써요. 예: 1. 비우면 누적 리포트(주차별 점수)에서 빠져요.',
+      '결과공개': 'Y면 학생이 제출 뒤 점수와 틀린 문항을 봐요. 비우면 학생에게는 자기가 칠한 답만 보여요(선생님 화면에는 항상 점수가 보여요). 나중에 Y로 바꾸면 그때부터 공개돼요.'
     }
   },
   items: {
@@ -119,7 +122,9 @@ const ACTIONS = {
   submit: apiSubmit_,
   myResult: apiMyResult_,
   teacherLogin: apiTeacherLogin_,
-  teacherToday: apiTeacherToday_
+  teacherToday: apiTeacherToday_,
+  myTrend: apiMyTrend_,          // v1.1.0
+  teacherTrend: apiTeacherTrend_ // v1.1.0
 };
 
 function handle_(req) {
@@ -235,7 +240,8 @@ function apiStudentHome_(req) {
       title: set.title,
       count: items[set.id].length,
       done: !!d,
-      score: d ? Number(d['점수']) : null
+      revealed: set.reveal,
+      score: d && set.reveal ? Number(d['점수']) : null
     };
   });
   // 아직 안 푼 세트를 먼저, 그다음 푼 세트
@@ -298,7 +304,8 @@ function apiSubmit_(req) {
       '틀린문항': result.wrong.join(', '),
       '비운문항': result.blank.join(', ')
     });
-    return { result: result, title: set.title };
+    if (!set.reveal) return { title: set.title, revealed: false, myAnswers: its.map(function (it) { return { no: it.no, choices: answers[it.no] }; }) };
+    return { result: result, title: set.title, revealed: true };
   });
 }
 
@@ -310,7 +317,12 @@ function apiMyResult_(req) {
     return String(r['학생ID']) === s.sid && norm_(r['세트ID']) === id;
   })[0];
   if (!row) throw userErr_('제출 기록이 없어요.', 'NOT_FOUND');
+  const set = setsById_()[id];
+  if (!set || !set.reveal) {
+    return { title: set ? set.title : String(row['세트이름'] || id), revealed: false, myAnswers: decodeAnswers_(row['답안']) };
+  }
   return {
+    revealed: true,
     title: String(row['세트이름'] || id),
     result: {
       score: Number(row['점수']),
@@ -404,6 +416,7 @@ function apiTeacherToday_(req) {
       setId: id,
       title: set ? set.title : String(groups[id][0]['세트이름'] || id),
       school: set ? set.school : '',
+      reveal: set ? set.reveal : false,
       submitted: n,
       avg: n ? round1_(scores.reduce(function (a, b) { return a + b; }, 0) / n) : null,
       max: n ? Math.max.apply(null, scores) : null,
@@ -422,6 +435,165 @@ function apiTeacherToday_(req) {
   });
 
   return { date: date, today: today, sets: out, warnings: warnings };
+}
+
+/* ───────────── 누적 리포트 (v1.1.0에 추가) ─────────────
+ * 주차: 세트 탭의 '주차' 칸. 비어 있으면 주차별 점수에서 빠짐(세부항목 집계에는 들어감).
+ * 주차 점수: 그 주차 세트 점수(100점 환산)의 평균.
+ * 약한 세부항목: 2문항 이상 풀었고 정답률 80% 미만인 것 중 낮은 순 3개.
+ */
+
+function apiMyTrend_(req) {
+  const s = getSession_(req.token, 'student');
+  requireChanged_(s);
+  findStudent_(readTable_('students'), s.sid);
+  const setById = setsById_();
+  const items = loadItems_();
+  const mine = readTable_('submissions').rows.filter(function (r) { return String(r['학생ID']) === s.sid; });
+  // v1.2.0: 결과를 공개한 세트만 학생 추이에 넣음
+  const rows = mine.filter(function (r) { const set = setById[norm_(r['세트ID'])]; return set && set.reveal; });
+  const st = buildStats_(rows, setById, items);
+  return {
+    hidden: mine.length - rows.length,
+    weeks: st.weeks.map(function (w) {
+      return { week: w.week, label: w.label, score: w.score, sets: w.sets.map(function (x) { return { title: x.title, score: x.score }; }) };
+    }),
+    avg: st.avg,
+    weak: weakTags_(st.tags),
+    tags: st.tags,
+    submitted: rows.length,
+    unweeked: st.unweeked
+  };
+}
+
+function apiTeacherTrend_(req) {
+  getSession_(req.token, 'teacher');
+  const students = readTable_('students').rows.filter(function (r) { return isActive_(r) && norm_(r['이름']); });
+  const schools = [];
+  students.forEach(function (r) {
+    const sc = String(r['학교'] == null ? '' : r['학교']).trim();
+    if (sc && schools.indexOf(sc) < 0) schools.push(sc);
+  });
+  schools.sort(function (a, b) { return a.localeCompare(b, 'ko'); });
+  const school = schools.indexOf(String(req.school || '')) >= 0 ? String(req.school) : (schools[0] || '');
+
+  const setById = setsById_();
+  const items = loadItems_();
+  const bySid = {};
+  readTable_('submissions').rows.forEach(function (r) {
+    const sid = String(r['학생ID']);
+    (bySid[sid] = bySid[sid] || []).push(r);
+  });
+
+  const unweeked = {};
+  const list = students.filter(function (r) { return norm_(r['학교']) === norm_(school); }).map(function (r) {
+    const rows = bySid[String(r['학생ID'])] || [];
+    rows.forEach(function (x) {
+      const set = setById[norm_(x['세트ID'])];
+      if (!set || set.week == null) unweeked[norm_(x['세트ID'])] = set ? set.title : String(x['세트이름'] || x['세트ID']);
+    });
+    const st = buildStats_(rows, setById, items);
+    const weeks = {};
+    st.weeks.forEach(function (w) { weeks[w.week] = { score: w.score, sets: w.sets.map(function (x) { return { title: x.title, score: x.score }; }) }; });
+    return {
+      name: String(r['이름']).trim(),
+      grade: String(r['학년'] == null ? '' : r['학년']).trim(),
+      weeks: weeks,
+      avg: st.avg,
+      weak: weakTags_(st.tags),
+      tags: st.tags,
+      submitted: rows.length
+    };
+  });
+  list.sort(function (a, b) { return a.name.localeCompare(b.name, 'ko'); });
+
+  const weekNums = [];
+  list.forEach(function (x) { Object.keys(x.weeks).forEach(function (k) { if (weekNums.indexOf(Number(k)) < 0) weekNums.push(Number(k)); }); });
+  weekNums.sort(function (a, b) { return a - b; });
+  const weeks = weekNums.map(function (w) {
+    const scores = list.filter(function (x) { return x.weeks[w]; }).map(function (x) { return x.weeks[w].score; });
+    return { week: w, label: w + '주차', n: scores.length, avg: scores.length ? round1_(scores.reduce(function (a, b) { return a + b; }, 0) / scores.length) : null };
+  });
+
+  return {
+    schools: schools,
+    school: school,
+    weeks: weeks,
+    students: list,
+    unweekedSets: Object.keys(unweeked).map(function (id) { return { setId: id, title: unweeked[id] }; })
+  };
+}
+
+function setsById_() {
+  const m = {};
+  loadSets_().forEach(function (x) { m[x.id] = x; });
+  return m;
+}
+
+/** 한 학생의 제출 기록 → 주차별 점수 + 세부항목 정답률 */
+function buildStats_(rows, setById, items) {
+  const byWeek = {};
+  const tags = {};
+  let unweeked = 0;
+  rows.forEach(function (r) {
+    const id = norm_(r['세트ID']);
+    const set = setById[id];
+    const wrong = parseNumList_(r['틀린문항']);
+    const answered = answeredNumbers_(r['답안']);
+    (items[id] || []).forEach(function (it) {
+      if (answered && answered.indexOf(it.no) < 0) return; // 제출 뒤에 추가된 문항은 빼기
+      const key = tagKey_(it);
+      if (!key) return;
+      const t = tags[key] = tags[key] || { tag: key, unit: it.unit, detail: it.detail, correct: 0, total: 0 };
+      t.total++;
+      if (wrong.indexOf(it.no) < 0) t.correct++;
+    });
+    if (!set || set.week == null) { unweeked++; return; }
+    const w = byWeek[set.week] = byWeek[set.week] || { week: set.week, sets: [] };
+    w.sets.push({ setId: id, title: set.title, score: Number(r['점수']) });
+  });
+  const weeks = Object.keys(byWeek).map(Number).sort(function (a, b) { return a - b; }).map(function (k) {
+    const w = byWeek[k];
+    w.label = k + '주차';
+    w.score = round1_(w.sets.reduce(function (a, x) { return a + x.score; }, 0) / w.sets.length);
+    return w;
+  });
+  const tagList = Object.keys(tags).map(function (k) {
+    const t = tags[k];
+    t.rate = Math.round(t.correct / t.total * 100);
+    return t;
+  }).sort(function (a, b) { return a.rate - b.rate || b.total - a.total || a.tag.localeCompare(b.tag, 'ko'); });
+  return {
+    weeks: weeks,
+    tags: tagList,
+    avg: weeks.length ? round1_(weeks.reduce(function (a, w) { return a + w.score; }, 0) / weeks.length) : null,
+    unweeked: unweeked
+  };
+}
+
+function weakTags_(tags) {
+  return tags.filter(function (t) { return t.total >= 2 && t.rate < 80; }).slice(0, 3);
+}
+
+function tagKey_(it) {
+  if (it.unit && it.detail) return it.unit + ' > ' + it.detail;
+  return it.detail || it.unit || '';
+}
+
+/** 답안 칸 "1:3 2:24 3:-" → [1,2,3]. 읽을 수 없으면 null */
+function answeredNumbers_(v) {
+  const nums = [];
+  String(v == null ? '' : v).split(/\s+/).forEach(function (p) {
+    const m = p.match(/^(\d+):/);
+    if (m) nums.push(Number(m[1]));
+  });
+  return nums.length ? nums : null;
+}
+
+/** 주차 칸: 1 / "1" / "1주차" → 1, 비었으면 null */
+function parseWeek_(v) {
+  const m = String(v == null ? '' : v).match(/\d+/);
+  return m ? Number(m[0]) : null;
 }
 
 /* ───────────── 채점 ───────────── */
@@ -468,6 +640,16 @@ function encodeAnswers_(items, answers) {
     const a = answers[it.no] || [];
     return it.no + ':' + (a.length ? a.join('') : '-');
   }).join(' ');
+}
+
+/** 답안 칸 "1:3 2:24 3:-" → [{no:1,choices:[3]}, {no:2,choices:[2,4]}, {no:3,choices:[]}] (v1.2.0) */
+function decodeAnswers_(v) {
+  const out = [];
+  String(v == null ? '' : v).split(/\s+/).forEach(function (p) {
+    const m = p.match(/^(\d+):([0-9]*|-)$/);
+    if (m) out.push({ no: Number(m[1]), choices: m[2] === '-' ? [] : m[2].split('').map(Number) });
+  });
+  return out;
 }
 
 /** 정답 칸 읽기: "2,4" / "2, 4" / 24 / "②④" 모두 [2,4] */
@@ -518,7 +700,9 @@ function loadSets_() {
       title: String(r['세트이름'] == null ? '' : r['세트이름']).trim() || id,
       school: String(r['학교'] == null ? '' : r['학교']).trim(),
       choices: choices,
-      on: isYes_(r['사용'])
+      on: isYes_(r['사용']),
+      week: parseWeek_(r['주차']),
+      reveal: isYes_(r['결과공개']) // v1.2.0
     };
   });
 }
@@ -877,7 +1061,7 @@ function setupSheets_() {
     const existing = lastCol ? sh.getRange(1, 1, 1, lastCol).getValues()[0].map(function (h) { return String(h == null ? '' : h).trim(); }) : [];
     while (existing.length && !existing[existing.length - 1]) existing.pop();
     const headers = existing.slice();
-    def.headers.forEach(function (h) { if (headers.indexOf(h) < 0) headers.push(h); });
+    def.headers.concat(def.extra || []).forEach(function (h) { if (headers.indexOf(h) < 0) headers.push(h); });
     sh.getRange(1, 1, 1, headers.length).setValues([headers]).setFontWeight('bold').setBackground('#f1f3f5');
     sh.setFrozenRows(1);
     const maxRows = Math.max(sh.getMaxRows() - 1, 1);
