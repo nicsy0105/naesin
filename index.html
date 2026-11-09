@@ -1,0 +1,432 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex">
+<link rel="icon" href="data:,">
+<title>확인 테스트</title>
+<script src="config.js"></script>
+<style>
+  :root {
+    --paper: #fbfaf6;
+    --card: #ffffff;
+    --ink: #1d1d1f;
+    --muted: #6b6b70;
+    --line: #e7e3da;
+    --omr: #c8243c;
+    --omr-soft: #fcecee;
+    --good: #2b7a3d;
+    --radius: 14px;
+    font-family: "Pretendard", "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", "Noto Sans CJK KR", system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--paper); color: var(--ink); }
+  body { -webkit-text-size-adjust: 100%; }
+  button, input, select { font: inherit; color: inherit; }
+  .app { max-width: 480px; margin: 0 auto; padding: 16px 16px 120px; min-height: 100vh; }
+
+  .brand { display: flex; align-items: center; gap: 8px; font-weight: 700; letter-spacing: -0.01em; margin: 4px 0 20px; }
+  .brand-mark { width: 18px; height: 22px; border: 2px solid var(--omr); border-radius: 50%; position: relative; }
+  .brand-mark::after { content: ""; position: absolute; inset: 3px; border-radius: 50%; background: var(--ink); }
+  .brand small { color: var(--muted); font-weight: 500; margin-left: auto; font-size: 13px; }
+
+  h1 { font-size: 24px; line-height: 1.3; letter-spacing: -0.02em; margin: 0 0 6px; }
+  .lead { color: var(--muted); margin: 0 0 20px; line-height: 1.5; font-size: 15px; }
+
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 20px; }
+  label { display: block; font-size: 14px; font-weight: 600; margin: 0 0 6px; }
+  .field { margin-bottom: 16px; }
+  input, select {
+    width: 100%; height: 50px; border: 1.5px solid var(--line); border-radius: 10px;
+    background: #fff; padding: 0 14px; font-size: 17px; outline: none;
+  }
+  input:focus, select:focus { border-color: var(--ink); }
+  .hint { color: var(--muted); font-size: 13px; margin-top: 6px; }
+  .error { color: var(--omr); font-size: 14px; font-weight: 600; min-height: 20px; margin: 4px 0 12px; line-height: 1.45; }
+
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+    height: 52px; padding: 0 20px; border-radius: 12px; border: 1.5px solid var(--ink);
+    background: var(--ink); color: #fff; font-weight: 700; font-size: 17px; cursor: pointer; width: 100%;
+  }
+  .btn:disabled { opacity: .5; cursor: default; }
+  .btn.ghost { background: transparent; color: var(--ink); }
+  .btn.small { height: 40px; font-size: 15px; width: auto; padding: 0 14px; border-radius: 10px; }
+  .links { display: flex; gap: 18px; justify-content: center; margin-top: 28px; }
+  .link { background: none; border: 0; color: var(--muted); text-decoration: underline; text-underline-offset: 3px; font-size: 14px; cursor: pointer; padding: 6px; }
+
+  /* 세트 목록 */
+  .who { display: flex; align-items: baseline; gap: 8px; margin-bottom: 18px; }
+  .who b { font-size: 22px; letter-spacing: -0.02em; }
+  .who span { color: var(--muted); }
+  .section-title { font-size: 14px; color: var(--muted); font-weight: 600; margin: 22px 0 10px; }
+  .set { display: flex; align-items: center; gap: 12px; background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; margin-bottom: 10px; }
+  .set-main { flex: 1; min-width: 0; }
+  .set-title { font-weight: 700; font-size: 16px; line-height: 1.35; }
+  .set-sub { color: var(--muted); font-size: 13px; margin-top: 3px; }
+  .set .score { font-weight: 800; font-size: 20px; white-space: nowrap; }
+  .set .score small { font-size: 13px; font-weight: 600; color: var(--muted); }
+  .set.done { background: transparent; }
+  .empty { text-align: center; color: var(--muted); padding: 40px 10px; line-height: 1.6; }
+
+  /* OMR */
+  .omr-top { position: sticky; top: 0; z-index: 5; background: var(--paper); padding: 10px 0 12px; margin: -16px 0 0; }
+  .omr-top .row { display: flex; align-items: center; gap: 10px; }
+  .back { background: none; border: 0; font-size: 22px; padding: 4px 8px 4px 0; cursor: pointer; }
+  .omr-title { font-weight: 700; font-size: 16px; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .progress { font-size: 14px; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .progress b { color: var(--ink); }
+  .omr-note { font-size: 13px; color: var(--muted); margin: 8px 0 0; }
+  .omr { background: #fff; border: 1.5px solid var(--omr); border-radius: 10px; overflow: hidden; }
+  .omr-head { display: grid; grid-template-columns: 56px 1fr; background: var(--omr-soft); color: var(--omr); font-size: 12px; font-weight: 700; letter-spacing: .08em; border-bottom: 1.5px solid var(--omr); }
+  .omr-head span { padding: 7px 0; text-align: center; }
+  .omr-head span:first-child { border-right: 1.5px solid var(--omr); }
+  .omr-row { display: grid; grid-template-columns: 56px 1fr; border-bottom: 1px solid #f1d5da; }
+  .omr-row:nth-child(5n+1) { border-bottom: 1.5px solid var(--omr); }
+  .omr-row:last-child { border-bottom: 0; }
+  .omr-no { display: flex; align-items: center; justify-content: center; font-weight: 800; color: var(--omr); border-right: 1.5px solid var(--omr); font-variant-numeric: tabular-nums; font-size: 17px; }
+  .omr-row.marked .omr-no { background: var(--omr-soft); }
+  .bubbles { display: flex; justify-content: space-around; align-items: center; padding: 6px 6px; }
+  .bubble {
+    width: 40px; height: 48px; padding: 0; border: 0; background: none; cursor: pointer;
+    display: flex; align-items: center; justify-content: center; -webkit-tap-highlight-color: transparent;
+  }
+  .bubble span {
+    width: 26px; height: 38px; border-radius: 50%; border: 1.5px solid var(--omr); color: var(--omr);
+    display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 700;
+    transition: background .08s, color .08s;
+  }
+  .bubble[aria-pressed="true"] span { background: var(--ink); border-color: var(--ink); color: rgba(255,255,255,.9); }
+  .bubble:focus-visible span { outline: 2px solid var(--ink); outline-offset: 2px; }
+
+  .bottom { position: fixed; left: 0; right: 0; bottom: 0; padding: 12px 16px calc(12px + env(safe-area-inset-bottom)); background: linear-gradient(to top, var(--paper) 70%, rgba(251,250,246,0)); }
+  .bottom .inner { max-width: 448px; margin: 0 auto; }
+
+  /* 결과 */
+  .result-card { text-align: center; padding: 28px 20px; }
+  .result-label { color: var(--muted); font-size: 14px; font-weight: 600; }
+  .big { font-size: 64px; font-weight: 800; letter-spacing: -0.04em; line-height: 1.1; margin: 6px 0 2px; font-variant-numeric: tabular-nums; }
+  .big small { font-size: 22px; font-weight: 700; color: var(--muted); letter-spacing: 0; margin-left: 2px; }
+  .count { color: var(--muted); font-size: 15px; }
+  .count b { color: var(--ink); }
+  .wrong-box { margin-top: 16px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+  .chip { min-width: 44px; height: 44px; padding: 0 8px; border-radius: 22px; border: 1.5px solid var(--omr); color: var(--omr); display: inline-flex; flex-direction: column; align-items: center; justify-content: center; font-weight: 800; font-size: 16px; line-height: 1; font-variant-numeric: tabular-nums; }
+  .chip.blank { border-style: dashed; }
+  .chip small { font-size: 10px; font-weight: 600; margin-top: 2px; }
+  .perfect { color: var(--good); font-weight: 700; margin-top: 10px; }
+
+  /* 확인 창 */
+  .modal { position: fixed; inset: 0; background: rgba(20,20,22,.45); display: flex; align-items: flex-end; justify-content: center; z-index: 20; padding: 16px; }
+  .modal[hidden] { display: none; }
+  .sheet { background: #fff; width: 100%; max-width: 448px; border-radius: 18px; padding: 22px 20px calc(18px + env(safe-area-inset-bottom)); }
+  .sheet h2 { margin: 0 0 12px; font-size: 20px; }
+  .sheet p { margin: 0 0 8px; line-height: 1.5; }
+  .sheet .warn { color: var(--omr); font-weight: 600; }
+  .sheet .btns { display: flex; gap: 10px; margin-top: 18px; }
+  .spinner { text-align: center; color: var(--muted); padding: 60px 0; }
+</style>
+</head>
+<body>
+<main id="app" class="app" aria-live="polite"></main>
+<div id="modal" class="modal" hidden></div>
+<script>
+const APP_VERSION = '1.0.0';
+const KEY = 'naesin.student';
+const $app = document.getElementById('app');
+const $modal = document.getElementById('modal');
+let lastPassword = null; // 처음 로그인 직후 비밀번호 바꾸기에만 씀 (저장 안 함)
+
+/* ── 작은 도구들 ── */
+function el(tag, attrs, ...kids) {
+  const n = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs || {})) {
+    if (v == null || v === false) continue;
+    if (k === 'class') n.className = v;
+    else if (k.startsWith('on')) n.addEventListener(k.slice(2), v);
+    else n.setAttribute(k, v === true ? '' : v);
+  }
+  for (const kid of kids.flat()) if (kid != null && kid !== false) n.append(kid instanceof Node ? kid : document.createTextNode(String(kid)));
+  return n;
+}
+const store = {
+  get(k) { try { return JSON.parse(sessionStorage.getItem(k)); } catch (e) { return null; } },
+  set(k, v) { try { sessionStorage.setItem(k, JSON.stringify(v)); } catch (e) {} },
+  del(k) { try { sessionStorage.removeItem(k); } catch (e) {} }
+};
+const remember = {
+  get(k) { try { return localStorage.getItem(k) || ''; } catch (e) { return ''; } },
+  set(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
+};
+function fmtScore(x) { return (Math.round(x * 10) / 10).toString(); }
+function screen(...kids) {
+  $app.replaceChildren(el('div', { class: 'brand' }, el('span', { class: 'brand-mark' }), '확인 테스트'),
+    ...kids.flat(Infinity).filter((k) => k != null && k !== false));
+  window.scrollTo(0, 0);
+}
+function loading(text) { screen(el('div', { class: 'spinner' }, text || '불러오는 중…')); }
+
+class ApiError extends Error { constructor(msg, code) { super(msg); this.code = code; } }
+async function api(action, data) {
+  const url = (window.APP_CONFIG || {}).API_URL || '';
+  if (!/^(https?:)?\//.test(url)) throw new ApiError('서버 주소가 아직 설정되지 않았어요. 선생님께 말씀해 주세요.', 'CONFIG');
+  let res;
+  try {
+    res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify(Object.assign({ action }, data || {}))
+    });
+  } catch (e) { throw new ApiError('인터넷 연결을 확인하고 다시 해 주세요.', 'NETWORK'); }
+  let out;
+  try { out = await res.json(); } catch (e) { throw new ApiError('서버 응답을 읽지 못했어요. 잠시 뒤 다시 해 주세요.', 'SERVER'); }
+  if (!out.ok) throw new ApiError(out.error || '문제가 생겼어요.', out.code);
+  return out;
+}
+function session() { return store.get(KEY); }
+function handleCommon(e) {
+  if (e.code === 'AUTH') { store.del(KEY); showLogin(e.message); return true; }
+  if (e.code === 'MUST_CHANGE') { showChangePw(true); return true; }
+  return false;
+}
+async function busy(btn, text, fn) {
+  const old = btn.textContent;
+  btn.disabled = true; btn.textContent = text;
+  try { return await fn(); } finally { btn.disabled = false; btn.textContent = old; }
+}
+
+/* ── 로그인 ── */
+async function showLogin(message) {
+  const err = el('div', { class: 'error', role: 'alert' }, message || '');
+  const school = el('select', { id: 'school', required: true }, el('option', { value: '' }, '불러오는 중…'));
+  const name = el('input', { id: 'name', autocomplete: 'username', placeholder: '이름', value: remember.get('naesin.name') });
+  const pw = el('input', { id: 'pw', type: 'password', autocomplete: 'current-password', placeholder: '비밀번호' });
+  const btn = el('button', { class: 'btn', type: 'submit' }, '로그인');
+  const form = el('form', { class: 'card', onsubmit: async (ev) => {
+    ev.preventDefault();
+    err.textContent = '';
+    if (!school.value || !name.value.trim() || !pw.value) { err.textContent = '학교, 이름, 비밀번호를 모두 입력해 주세요.'; return; }
+    try {
+      const r = await busy(btn, '확인 중…', () => api('studentLogin', { school: school.value, name: name.value, password: pw.value }));
+      remember.set('naesin.school', school.value);
+      remember.set('naesin.name', name.value.trim());
+      store.set(KEY, { token: r.token, name: r.name, school: r.school });
+      if (r.mustChange) { lastPassword = pw.value; showChangePw(true); }
+      else showHome();
+    } catch (e) { err.textContent = e.message; pw.value = ''; pw.focus(); }
+  } },
+    el('div', { class: 'field' }, el('label', { for: 'school' }, '학교'), school),
+    el('div', { class: 'field' }, el('label', { for: 'name' }, '이름'), name),
+    el('div', { class: 'field' }, el('label', { for: 'pw' }, '비밀번호'), pw,
+      el('div', { class: 'hint' }, '처음이면 0000을 입력하세요.')),
+    err, btn
+  );
+  screen(el('h1', {}, '로그인'), el('p', { class: 'lead' }, '학교를 고르고 이름과 비밀번호를 입력하세요.'), form);
+  try {
+    const r = await api('schools');
+    const saved = remember.get('naesin.school');
+    school.replaceChildren(el('option', { value: '' }, '학교 선택'),
+      ...r.schools.map((s) => el('option', { value: s, selected: s === saved }, s)));
+  } catch (e) {
+    school.replaceChildren(el('option', { value: '' }, '불러오지 못함'));
+    err.textContent = e.message;
+  }
+}
+
+/* ── 비밀번호 바꾸기 ── */
+function showChangePw(forced) {
+  const s = session();
+  if (!s) return showLogin();
+  const needCurrent = !(forced && lastPassword);
+  const err = el('div', { class: 'error', role: 'alert' });
+  const cur = el('input', { id: 'cur', type: 'password', autocomplete: 'current-password' });
+  const np = el('input', { id: 'np', type: 'password', autocomplete: 'new-password' });
+  const np2 = el('input', { id: 'np2', type: 'password', autocomplete: 'new-password' });
+  const btn = el('button', { class: 'btn', type: 'submit' }, '비밀번호 바꾸기');
+  const form = el('form', { class: 'card', onsubmit: async (ev) => {
+    ev.preventDefault();
+    err.textContent = '';
+    if (np.value !== np2.value) { err.textContent = '새 비밀번호 두 개가 서로 달라요.'; return; }
+    try {
+      await busy(btn, '바꾸는 중…', () => api('changePassword', {
+        token: s.token, currentPassword: needCurrent ? cur.value : lastPassword, newPassword: np.value
+      }));
+      lastPassword = null;
+      showHome('비밀번호를 바꿨어요.');
+    } catch (e) { if (e.code === 'AUTH') handleCommon(e); else err.textContent = e.message; }
+  } },
+    needCurrent ? el('div', { class: 'field' }, el('label', { for: 'cur' }, '지금 비밀번호'), cur) : null,
+    el('div', { class: 'field' }, el('label', { for: 'np' }, '새 비밀번호'), np,
+      el('div', { class: 'hint' }, '4자 이상, 0000은 안 돼요.')),
+    el('div', { class: 'field' }, el('label', { for: 'np2' }, '새 비밀번호 한 번 더'), np2),
+    err, btn
+  );
+  screen(
+    el('h1', {}, forced ? '새 비밀번호 정하기' : '비밀번호 바꾸기'),
+    el('p', { class: 'lead' }, forced ? `${s.name} 학생, 처음 로그인했어요. 나만 아는 비밀번호로 바꿔 주세요.` : '새 비밀번호를 정해 주세요.'),
+    form,
+    forced ? null : el('div', { class: 'links' }, el('button', { class: 'link', onclick: () => showHome() }, '돌아가기'))
+  );
+  (needCurrent ? cur : np).focus();
+}
+
+/* ── 세트 목록 ── */
+async function showHome(notice) {
+  const s = session();
+  if (!s) return showLogin();
+  loading();
+  let r;
+  try { r = await api('studentHome', { token: s.token }); }
+  catch (e) { if (!handleCommon(e)) screen(el('div', { class: 'error' }, e.message), el('button', { class: 'btn ghost', onclick: () => showHome() }, '다시 시도')); return; }
+  const todo = r.sets.filter((x) => !x.done);
+  const done = r.sets.filter((x) => x.done);
+  screen(
+    el('div', { class: 'who' }, el('b', {}, `${r.name} 학생`), el('span', {}, r.school)),
+    notice ? el('div', { class: 'hint', style: 'color:var(--good);font-weight:600;margin:-8px 0 12px' }, notice) : null,
+    el('div', { class: 'section-title' }, '풀 수 있는 테스트'),
+    todo.length ? todo.map((x) => el('div', { class: 'set' },
+      el('div', { class: 'set-main' }, el('div', { class: 'set-title' }, x.title), el('div', { class: 'set-sub' }, `${x.count}문항`)),
+      el('button', { class: 'btn small', onclick: () => showOmr(x.setId) }, '풀기')
+    )) : el('div', { class: 'empty' }, '지금 풀 테스트가 없어요.'),
+    done.length ? el('div', { class: 'section-title' }, '제출한 테스트') : null,
+    done.map((x) => el('div', { class: 'set done' },
+      el('div', { class: 'set-main' }, el('div', { class: 'set-title' }, x.title), el('div', { class: 'set-sub' }, `${x.count}문항 · 제출함`)),
+      el('div', { class: 'score' }, fmtScore(x.score), el('small', {}, '점')),
+      el('button', { class: 'btn small ghost', onclick: () => openResult(x.setId) }, '결과')
+    )),
+    el('div', { class: 'links' },
+      el('button', { class: 'link', onclick: () => showChangePw(false) }, '비밀번호 바꾸기'),
+      el('button', { class: 'link', onclick: () => { store.del(KEY); showLogin(); } }, '로그아웃'))
+  );
+}
+
+/* ── OMR ── */
+async function showOmr(setId) {
+  const s = session();
+  loading('문제지를 펴는 중…');
+  let set;
+  try { set = await api('getSet', { token: s.token, setId }); }
+  catch (e) {
+    if (e.code === 'ALREADY') return openResult(setId);
+    if (handleCommon(e)) return;
+    showHome(); alertSheet(e.message);
+    return;
+  }
+  const draftKey = `naesin.draft.${s.token.slice(0, 8)}.${setId}`;
+  const draft = store.get(draftKey) || {};
+  const marks = {};
+  set.numbers.forEach((no) => { marks[no] = new Set(Array.isArray(draft[no]) ? draft[no] : []); });
+
+  const prog = el('span', { class: 'progress' });
+  const updateProgress = () => {
+    const n = set.numbers.filter((no) => marks[no].size).length;
+    prog.replaceChildren('표시 ', el('b', {}, String(n)), ` / ${set.numbers.length}`);
+  };
+  const save = () => { const o = {}; set.numbers.forEach((no) => { o[no] = [...marks[no]]; }); store.set(draftKey, o); };
+
+  const rows = set.numbers.map((no) => {
+    const row = el('div', { class: 'omr-row' + (marks[no].size ? ' marked' : '') }, el('div', { class: 'omr-no' }, String(no)));
+    const bubbles = el('div', { class: 'bubbles' });
+    for (let c = 1; c <= set.choices; c++) {
+      const b = el('button', {
+        class: 'bubble', type: 'button', 'aria-pressed': marks[no].has(c) ? 'true' : 'false',
+        'aria-label': `${no}번 문항 ${c}번`,
+        onclick: () => {
+          if (marks[no].has(c)) marks[no].delete(c); else marks[no].add(c);
+          b.setAttribute('aria-pressed', marks[no].has(c) ? 'true' : 'false');
+          row.classList.toggle('marked', marks[no].size > 0);
+          updateProgress(); save();
+        }
+      }, el('span', {}, String(c)));
+      bubbles.append(b);
+    }
+    row.append(bubbles);
+    return row;
+  });
+  updateProgress();
+
+  const submitBtn = el('button', { class: 'btn', onclick: () => confirmSubmit() }, '제출하기');
+  screen(
+    el('div', { class: 'omr-top' },
+      el('div', { class: 'row' },
+        el('button', { class: 'back', 'aria-label': '목록으로', onclick: () => showHome() }, '←'),
+        el('div', { class: 'omr-title' }, set.title), prog),
+      el('p', { class: 'omr-note' }, '답이 여러 개인 문항은 모두 칠하세요. 다시 누르면 지워져요.')),
+    el('div', { class: 'omr' }, el('div', { class: 'omr-head' }, el('span', {}, '번호'), el('span', {}, '답 표시란')), rows),
+    el('div', { class: 'bottom' }, el('div', { class: 'inner' }, submitBtn))
+  );
+  // 브랜드 줄은 OMR 화면에서 숨김 (화면을 넓게)
+  $app.querySelector('.brand').style.display = 'none';
+
+  function confirmSubmit() {
+    const blank = set.numbers.filter((no) => !marks[no].size);
+    const go = el('button', { class: 'btn' }, '제출하기');
+    openModal(
+      el('h2', {}, '제출할까요?'),
+      el('p', {}, `표시한 문항 ${set.numbers.length - blank.length} / ${set.numbers.length}`),
+      blank.length ? el('p', { class: 'warn' }, `비운 문항 ${blank.join(', ')}번은 틀림으로 처리돼요.`) : null,
+      el('p', { style: 'color:var(--muted)' }, '제출하면 답을 고칠 수 없어요.'),
+      el('div', { class: 'btns' }, el('button', { class: 'btn ghost', onclick: closeModal }, '더 볼게요'), go)
+    );
+    go.addEventListener('click', async () => {
+      const answers = {};
+      set.numbers.forEach((no) => { answers[no] = [...marks[no]].sort((a, b) => a - b); });
+      try {
+        const r = await busy(go, '제출 중…', () => api('submit', { token: s.token, setId, answers }));
+        closeModal(); store.del(draftKey);
+        showResult(r.title, r.result);
+      } catch (e) {
+        closeModal();
+        if (e.code === 'ALREADY') return openResult(setId);
+        if (!handleCommon(e)) alertSheet(e.message + (e.code === 'NETWORK' ? '\n표시한 답은 그대로 남아 있어요.' : ''));
+      }
+    });
+  }
+}
+
+/* ── 결과 ── */
+async function openResult(setId) {
+  const s = session();
+  loading();
+  try { const r = await api('myResult', { token: s.token, setId }); showResult(r.title, r.result); }
+  catch (e) { if (!handleCommon(e)) { showHome(); alertSheet(e.message); } }
+}
+function showResult(title, r) {
+  const blank = new Set(r.blank);
+  screen(
+    el('div', { class: 'card result-card' },
+      el('div', { class: 'result-label' }, title),
+      el('div', { class: 'big' }, fmtScore(r.score), el('small', {}, '점')),
+      el('div', { class: 'count' }, '100점 만점 · 맞은 문항 ', el('b', {}, String(r.correct)), ` / ${r.count}`)
+    ),
+    el('div', { class: 'card wrong-box' },
+      el('label', {}, r.wrong.length ? `틀린 문항 ${r.wrong.length}개` : '틀린 문항'),
+      r.wrong.length
+        ? el('div', { class: 'chips' }, r.wrong.map((no) => blank.has(no)
+            ? el('span', { class: 'chip blank', title: '비움' }, String(no), el('small', {}, '비움'))
+            : el('span', { class: 'chip' }, String(no))))
+        : el('div', { class: 'perfect' }, '모두 맞았어요!'),
+      r.wrong.length ? el('div', { class: 'hint', style: 'margin-top:12px' }, '틀린 문항은 다시 풀어 보고 선생님께 질문하세요.') : null
+    ),
+    el('div', { style: 'margin-top:18px' }, el('button', { class: 'btn ghost', onclick: () => showHome() }, '목록으로'))
+  );
+}
+
+/* ── 창 ── */
+function openModal(...kids) {
+  $modal.replaceChildren(el('div', { class: 'sheet', role: 'dialog', 'aria-modal': 'true' }, ...kids));
+  $modal.hidden = false;
+}
+function closeModal() { $modal.hidden = true; $modal.replaceChildren(); }
+function alertSheet(msg) {
+  openModal(el('p', { style: 'white-space:pre-line;font-weight:600' }, msg),
+    el('div', { class: 'btns' }, el('button', { class: 'btn', onclick: closeModal }, '확인')));
+}
+$modal.addEventListener('click', (e) => { if (e.target === $modal) closeModal(); });
+
+/* ── 시작 ── */
+if (session()) showHome(); else showLogin();
+</script>
+</body>
+</html>
