@@ -325,6 +325,123 @@ test('예상 못 한 서버 오류가 없었다', () => {
   assert.deepStrictEqual(g.errors, []);
 });
 
+/* ── 누적 리포트 (v1.1.0) ── */
+
+const KEY_A = { 1: [3], 2: [2, 4], 3: [1], 4: [5], 5: [4], 6: [2], 7: [1, 3], 8: [3], 9: [5], 10: [2], 11: [4], 12: [1] };
+function setWeek(g, setId, week) {
+  const sh = g.sheet('세트');
+  const col = sh.data[0].indexOf('주차') + 1;
+  const row = sh.objects().find((x) => x.세트ID === setId)._row;
+  sh.setCell(row, col, week);
+}
+function addSet2(g) {
+  g.sheet('세트').addRow({ 세트ID: 'DEMO-A-2', 세트이름: '[가짜] 2주차 점검', 학교: '샘플고A', 사용: 'Y', 주차: '2주차' });
+  ['1', '2', '3', '4'].forEach((k, i) => g.sheet('문항').addRow({ 세트ID: 'DEMO-A-2', 번호: i + 1, 정답: k, 단원: '고전시가', 세부항목: i < 2 ? '표현상 특징' : '화자의 태도' }));
+}
+
+test('시트 탭 만들기: 세트 탭에 주차 칸이 생긴다', () => {
+  const g = loadGas();
+  g.ctx.setupSheets_();
+  assert.ok(g.sheet('세트').data[0].includes('주차'));
+});
+
+test('주차 칸이 없는 예전 시트에서도 기존 기능은 그대로 동작한다', () => {
+  const g = fresh({ now: '2026-11-07T18:00:00+09:00' });
+  const sh = g.sheet('세트');
+  const col = sh.data[0].indexOf('주차');
+  sh.data.forEach((row) => { row[col] = ''; }); // 주차 칸 통째로 없애기
+  const t = studentReady(g, '샘플고A', '가상학생01');
+  ok(g.call('studentHome', { token: t }));
+  ok(g.call('submit', { token: t, setId: 'DEMO-A-1', answers: KEY_A }));
+  ok(g.call('teacherToday', { token: teacherReady(g) }));
+  const r = ok(g.call('myTrend', { token: t }));
+  assert.deepStrictEqual(r.weeks, []);
+  assert.strictEqual(r.unweeked, 1);
+});
+
+test('주차별 점수: 같은 주차 세트는 점수 평균, 주차 평균은 주차 점수의 평균', () => {
+  const g = fresh({ now: '2026-11-03T18:00:00+09:00' });
+  setWeek(g, 'DEMO-ALL', 1);
+  addSet2(g);
+  const t = studentReady(g, '샘플고A', '가상학생01');
+  ok(g.call('submit', { token: t, setId: 'DEMO-A-1', answers: KEY_A }));                       // 100
+  ok(g.call('submit', { token: t, setId: 'DEMO-ALL', answers: { 1: [1], 2: [2], 3: [1] } }));  // 2/5 = 40
+  g.advance(7 * 86400000);
+  ok(g.call('submit', { token: t, setId: 'DEMO-A-2', answers: { 1: [1], 2: [2], 3: [3] } }));  // 3/4 = 75
+  const r = ok(g.call('myTrend', { token: t }));
+  assert.deepStrictEqual(r.weeks.map((w) => [w.label, w.score]), [['1주차', 70], ['2주차', 75]]);
+  assert.strictEqual(r.weeks[0].sets.length, 2);
+  assert.strictEqual(r.avg, 72.5);
+  assert.strictEqual(r.submitted, 3);
+});
+
+test('세부항목 집계와 약한 세부항목(2문항 이상·80% 미만, 낮은 순 최대 3개)', () => {
+  const g = fresh();
+  addSet2(g);
+  const t = studentReady(g, '샘플고A', '가상학생01');
+  // A-1: 7번(외적 준거 감상 아님: 7번은 i%4=2 → 시어의 의미), 11번(i%4=2 → 시어의 의미) 틀림
+  ok(g.call('submit', { token: t, setId: 'DEMO-A-1', answers: Object.assign({}, KEY_A, { 7: [1], 11: [] }) }));
+  // A-2: 3,4번(화자의 태도) 틀림
+  ok(g.call('submit', { token: t, setId: 'DEMO-A-2', answers: { 1: [1], 2: [2], 3: [1], 4: [1] } }));
+  const r = ok(g.call('myTrend', { token: t }));
+  const tag = (name) => r.tags.find((x) => x.tag === '고전시가 > ' + name);
+  assert.deepStrictEqual([tag('시어의 의미').correct, tag('시어의 의미').total], [1, 3]);
+  assert.deepStrictEqual([tag('화자의 태도').correct, tag('화자의 태도').total], [3, 5]);
+  assert.deepStrictEqual([tag('표현상 특징').correct, tag('표현상 특징').total], [5, 5]);
+  assert.deepStrictEqual(r.weak.map((x) => [x.detail, x.rate]), [['시어의 의미', 33], ['화자의 태도', 60]]);
+});
+
+test('제출한 뒤에 추가된 문항은 세부항목 집계에서 빠진다', () => {
+  const g = fresh();
+  const t = studentReady(g, '샘플고A', '가상학생01');
+  ok(g.call('submit', { token: t, setId: 'DEMO-ALL', answers: { 1: [1], 2: [2], 3: [3], 4: [4], 5: [5] } }));
+  g.sheet('문항').addRow({ 세트ID: 'DEMO-ALL', 번호: 6, 정답: '1', 단원: '어휘', 세부항목: '한자어' });
+  const r = ok(g.call('myTrend', { token: t }));
+  assert.strictEqual(r.tags.find((x) => x.detail === '한자어').total, 5);
+});
+
+test('학생 추이에는 자기 기록만 있다 (다른 학생 이름 없음)', () => {
+  const g = fresh();
+  const t1 = studentReady(g, '샘플고A', '가상학생01');
+  const t2 = studentReady(g, '샘플고A', '가상학생02');
+  ok(g.call('submit', { token: t1, setId: 'DEMO-A-1', answers: KEY_A }));
+  ok(g.call('submit', { token: t2, setId: 'DEMO-A-1', answers: { 1: [1] } }));
+  const r = ok(g.call('myTrend', { token: t2, studentId: 'S0001', name: '가상학생01' }));
+  assert.ok(!JSON.stringify(r).includes('가상학생01'));
+  assert.strictEqual(r.weeks[0].score, 0);
+  fail(g.call('myTrend', { token: 'nope' }), 'AUTH');
+  const fresh0 = ok(g.call('studentLogin', { school: '샘플고A', name: '가상학생03', password: '0000' }));
+  fail(g.call('myTrend', { token: fresh0.token }), 'MUST_CHANGE');
+});
+
+test('선생님 누적 리포트: 학교별 학생 × 주차 점수, 주차별 반 평균, 주차 없는 세트 안내', () => {
+  const g = fresh({ now: '2026-11-03T18:00:00+09:00' });
+  addSet2(g);
+  const t1 = studentReady(g, '샘플고A', '가상학생01');
+  const t2 = studentReady(g, '샘플고A', '가상학생02');
+  ok(g.call('submit', { token: t1, setId: 'DEMO-A-1', answers: KEY_A }));                  // 1주차 100
+  ok(g.call('submit', { token: t2, setId: 'DEMO-A-1', answers: Object.assign({}, KEY_A, { 1: [1], 2: [2], 3: [] }) })); // 75
+  ok(g.call('submit', { token: t1, setId: 'DEMO-ALL', answers: { 1: [1] } }));             // 주차 없음
+  ok(g.call('submit', { token: t1, setId: 'DEMO-A-2', answers: { 1: [1], 2: [2], 3: [3], 4: [4] } })); // 2주차 100
+  const tt = teacherReady(g);
+  fail(g.call('teacherTrend', { token: t1 }), 'AUTH');
+  const r = ok(g.call('teacherTrend', { token: tt }));
+  assert.deepStrictEqual(r.schools, ['샘플고A', '샘플고B']);
+  assert.strictEqual(r.school, '샘플고A');
+  assert.deepStrictEqual(r.weeks.map((w) => [w.label, w.avg, w.n]), [['1주차', 87.5, 2], ['2주차', 100, 1]]);
+  const names = r.students.map((x) => x.name);
+  assert.deepStrictEqual(names, ['가상학생01', '가상학생02', '가상학생03', '가상학생04', '가상학생05', '가상학생06']);
+  const s1 = r.students[0];
+  assert.deepStrictEqual([s1.weeks[1].score, s1.weeks[2].score, s1.avg, s1.submitted], [100, 100, 100, 3]);
+  assert.strictEqual(r.students[2].submitted, 0);
+  assert.deepStrictEqual(r.students[2].weeks, {});
+  assert.deepStrictEqual(r.unweekedSets.map((x) => x.setId), ['DEMO-ALL']);
+  const b = ok(g.call('teacherTrend', { token: tt, school: '샘플고B' }));
+  assert.deepStrictEqual(b.students.map((x) => x.name), ['가상학생07', '가상학생08', '가상학생09']);
+  const unknown = ok(g.call('teacherTrend', { token: tt, school: '없는학교' }));
+  assert.strictEqual(unknown.school, '샘플고A');
+});
+
 /* ── 실행 ── */
 
 let passed = 0;

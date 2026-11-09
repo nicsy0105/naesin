@@ -126,13 +126,35 @@
   .sheet .warn { color: var(--omr); font-weight: 600; }
   .sheet .btns { display: flex; gap: 10px; margin-top: 18px; }
   .spinner { text-align: center; color: var(--muted); padding: 60px 0; }
+
+  /* 내 성적 추이 (v1.1.0) */
+  .card + .card { margin-top: 12px; }
+  .card-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 6px; }
+  .card-head label { margin: 0; }
+  .chart { display: block; margin: 4px 0 6px; overflow: visible; }
+  .chart .grid { stroke: #ece8df; stroke-width: 1; }
+  .chart .ytick, .chart .xtick { font-size: 11px; fill: var(--muted); }
+  .chart .vlabel { font-size: 12px; font-weight: 700; fill: var(--ink); }
+  .tagbar { margin-top: 14px; }
+  .tagbar-top { display: flex; justify-content: space-between; font-size: 15px; }
+  .tagbar-top b { font-variant-numeric: tabular-nums; }
+  .bar { height: 8px; border-radius: 4px; background: #efece5; margin: 6px 0 4px; overflow: hidden; }
+  .bar span { display: block; height: 100%; border-radius: 4px; background: #d9a441; }
+  .bar span.low { background: var(--omr); }
+  .tagbar-sub { font-size: 12px; color: var(--muted); }
+  .wk { padding: 12px 0; border-bottom: 1px solid #f0ede6; }
+  .wk:last-child { border-bottom: 0; padding-bottom: 0; }
+  .wk-head { display: flex; justify-content: space-between; font-size: 15px; }
+  .wk-head span { font-weight: 700; font-variant-numeric: tabular-nums; }
+  .wk-set { display: flex; justify-content: space-between; gap: 12px; font-size: 13px; color: var(--muted); margin-top: 4px; }
+  .wk-set span:last-child { white-space: nowrap; font-variant-numeric: tabular-nums; }
 </style>
 </head>
 <body>
 <main id="app" class="app" aria-live="polite"></main>
 <div id="modal" class="modal" hidden></div>
 <script>
-const APP_VERSION = '1.0.0';
+const APP_VERSION = '1.1.0';
 const KEY = 'naesin.student';
 const $app = document.getElementById('app');
 const $modal = document.getElementById('modal');
@@ -295,6 +317,7 @@ async function showHome(notice) {
       el('div', { class: 'score' }, fmtScore(x.score), el('small', {}, '점')),
       el('button', { class: 'btn small ghost', onclick: () => openResult(x.setId) }, '결과')
     )),
+    el('button', { class: 'btn ghost', style: 'margin-top:18px', onclick: () => showTrend() }, '내 성적 추이 보기'),
     el('div', { class: 'links' },
       el('button', { class: 'link', onclick: () => showChangePw(false) }, '비밀번호 바꾸기'),
       el('button', { class: 'link', onclick: () => { store.del(KEY); showLogin(); } }, '로그아웃'))
@@ -411,6 +434,84 @@ function showResult(title, r) {
     ),
     el('div', { style: 'margin-top:18px' }, el('button', { class: 'btn ghost', onclick: () => showHome() }, '목록으로'))
   );
+}
+
+/* ── 내 성적 추이 (v1.1.0) ── */
+async function showTrend() {
+  const s = session();
+  if (!s) return showLogin();
+  loading();
+  let r;
+  try { r = await api('myTrend', { token: s.token }); }
+  catch (e) { if (!handleCommon(e)) { showHome(); alertSheet(e.message); } return; }
+  const back = el('div', {}, el('button', { class: 'link', style: 'padding-left:0;margin-bottom:6px', onclick: () => showHome() }, '← 목록으로'));
+  if (!r.submitted) {
+    screen(back, el('h1', {}, '내 성적 추이'), el('div', { class: 'card empty' }, '아직 기록이 없어요.', el('br'), '테스트를 풀면 주차별로 쌓여요.'));
+    return;
+  }
+  const chartCard = r.weeks.length ? el('div', { class: 'card' },
+    el('div', { class: 'card-head' }, el('label', {}, '주차별 점수'), el('span', { class: 'hint' }, `주차 평균 ${fmtScore(r.avg)}점`)),
+    lineChart({
+      labels: r.weeks.map((w) => w.label),
+      series: [{ name: '내 점수', values: r.weeks.map((w) => w.score), color: '#1d1d1f', labelLast: true }],
+      ariaLabel: '주차별 점수: ' + r.weeks.map((w) => `${w.label} ${fmtScore(w.score)}점`).join(', ')
+    }),
+    el('div', { class: 'hint' }, '주차 점수는 그 주에 푼 테스트 점수의 평균이에요.')) : null;
+  const weakCard = el('div', { class: 'card' },
+    el('label', {}, '약한 세부항목'),
+    r.weak.length ? r.weak.map(tagBar)
+      : el('div', { class: 'hint', style: 'margin-top:8px' }, r.tags.length ? '지금은 약한 항목이 없어요. 잘하고 있어요!' : '아직 세부항목 기록이 없어요.'),
+    r.weak.length ? el('div', { class: 'hint', style: 'margin-top:14px' }, '2문항 이상 푼 것 중 정답률이 80%보다 낮은 항목이에요. 이 부분을 다시 복습해 보세요.') : null);
+  const listCard = r.weeks.length ? el('div', { class: 'card' },
+    el('label', {}, '주차별 기록'),
+    r.weeks.slice().reverse().map((w) => el('div', { class: 'wk' },
+      el('div', { class: 'wk-head' }, el('b', {}, w.label), el('span', {}, `${fmtScore(w.score)}점`)),
+      w.sets.map((x) => el('div', { class: 'wk-set' }, el('span', {}, x.title), el('span', {}, `${fmtScore(x.score)}점`)))))) : null;
+  screen(back, el('h1', {}, '내 성적 추이'), chartCard, weakCard, listCard);
+}
+function tagBar(t) {
+  return el('div', { class: 'tagbar' },
+    el('div', { class: 'tagbar-top' }, el('span', {}, t.detail || t.tag), el('b', {}, `${t.rate}%`)),
+    el('div', { class: 'bar' }, el('span', { class: t.rate < 60 ? 'low' : '', style: `width:${Math.max(t.rate, 2)}%` })),
+    el('div', { class: 'tagbar-sub' }, `${t.detail && t.unit ? t.unit + ' · ' : ''}${t.total}문항 중 ${t.correct}개 맞음`));
+}
+
+/* 꺾은선 그래프 (0~100점). values의 null은 끊어서 그림 */
+const SVGNS = 'http://www.w3.org/2000/svg';
+function svgEl(tag, attrs, ...kids) {
+  const n = document.createElementNS(SVGNS, tag);
+  for (const [k, v] of Object.entries(attrs || {})) if (v != null) n.setAttribute(k, v);
+  for (const kid of kids.flat()) if (kid != null) n.append(kid instanceof Node ? kid : document.createTextNode(String(kid)));
+  return n;
+}
+function lineChart({ labels, series, width = 340, height = 170, axis = true, ariaLabel = '' }) {
+  const pad = axis ? { l: 30, r: 36, t: 12, b: 26 } : { l: 4, r: 4, t: 4, b: 4 };
+  const iw = width - pad.l - pad.r, ih = height - pad.t - pad.b, n = labels.length;
+  const x = (i) => pad.l + (n === 1 ? iw / 2 : (iw * i) / (n - 1));
+  const y = (v) => pad.t + ih - (ih * v) / 100;
+  const root = svgEl('svg', { viewBox: `0 0 ${width} ${height}`, width: '100%', role: 'img', 'aria-label': ariaLabel, class: 'chart' });
+  if (axis) {
+    [0, 50, 100].forEach((v) => root.append(
+      svgEl('line', { x1: pad.l, x2: width - pad.r, y1: y(v), y2: y(v), class: 'grid' }),
+      svgEl('text', { x: pad.l - 6, y: y(v) + 4, class: 'ytick', 'text-anchor': 'end' }, String(v))));
+    labels.forEach((l, i) => root.append(svgEl('text', { x: x(i), y: height - 6, class: 'xtick', 'text-anchor': 'middle' }, l)));
+  }
+  series.forEach((s) => {
+    let d = '', pen = false, last = -1;
+    s.values.forEach((v, i) => {
+      if (v == null) { pen = false; return; }
+      d += (pen ? 'L' : 'M') + x(i).toFixed(1) + ' ' + y(v).toFixed(1); pen = true; last = i;
+    });
+    root.append(svgEl('path', { d, fill: 'none', stroke: s.color, 'stroke-width': 2, 'stroke-linejoin': 'round', 'stroke-linecap': 'round', 'stroke-dasharray': s.dash || null }));
+    s.values.forEach((v, i) => {
+      if (v == null) return;
+      root.append(svgEl('circle', { cx: x(i), cy: y(v), r: axis ? 4 : 2.2, fill: s.color, stroke: '#fff', 'stroke-width': axis ? 2 : 1 }));
+      root.append(svgEl('circle', { cx: x(i), cy: y(v), r: axis ? 14 : 7, fill: 'transparent' },
+        svgEl('title', {}, `${s.name ? s.name + ' · ' : ''}${labels[i]} ${fmtScore(v)}점`)));
+    });
+    if (axis && s.labelLast && last >= 0) root.append(svgEl('text', { x: x(last) + 8, y: y(s.values[last]) + 4, class: 'vlabel' }, fmtScore(s.values[last])));
+  });
+  return root;
 }
 
 /* ── 창 ── */
