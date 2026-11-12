@@ -6,7 +6,7 @@
  *
  * 서버 파일을 고칠 때마다 아래 버전 번호를 올립니다.
  */
-const SERVER_VERSION = '1.2.0';
+const SERVER_VERSION = '1.5.0';
 
 const CONFIG = {
   TZ: 'Asia/Seoul',
@@ -26,22 +26,25 @@ const SHEET_DEFS = {
   students: {
     name: '학생',
     headers: ['학생ID', '이름', '학교', '학년', '상태', '비밀번호해시', '솔트', '실패횟수', '잠금해제시각', '비밀번호변경일'],
-    system: ['학생ID', '비밀번호해시', '솔트', '실패횟수', '잠금해제시각', '비밀번호변경일'],
-    text: ['학생ID', '이름', '학교', '학년', '상태', '비밀번호해시', '솔트', '잠금해제시각'],
+    extra: ['학부모비밀번호해시', '학부모솔트', '학부모실패횟수', '학부모잠금해제시각', '학부모초기'], // v1.5.0
+    system: ['학생ID', '비밀번호해시', '솔트', '실패횟수', '잠금해제시각', '비밀번호변경일', '학부모비밀번호해시', '학부모솔트', '학부모실패횟수', '학부모잠금해제시각', '학부모초기'],
+    text: ['학생ID', '이름', '학교', '학년', '상태', '비밀번호해시', '솔트', '잠금해제시각', '학부모비밀번호해시', '학부모솔트', '학부모잠금해제시각', '학부모초기'],
     notes: {
       '학생ID': '자동으로 채워져요. 직접 고치지 마세요.',
       '이름': '학생 이름. 같은 학교에 이름이 같은 학생이 있으면 김민준A, 김민준B처럼 구분해 주세요.',
       '학교': '학생이 로그인할 때 고르는 학교 이름이에요.',
       '상태': '비워 두면 재원. "퇴원"이라고 쓰면 로그인할 수 없어요.',
       '비밀번호해시': '직접 쓰지 마세요. 비어 있으면 초기 비밀번호 0000이에요. 0000으로 되돌리려면 메뉴 [내신 관리 → 선택한 학생 비밀번호 0000으로 되돌리기].',
-      '실패횟수': '로그인 실패 기록이에요. 메뉴 [내신 관리 → 선택한 학생 잠금 풀기]로 지울 수 있어요.'
+      '실패횟수': '로그인 실패 기록이에요. 메뉴 [내신 관리 → 선택한 학생 잠금 풀기]로 지울 수 있어요.',
+      '학부모비밀번호해시': '직접 쓰지 마세요. 메뉴 [내신 관리 → 선택한 학생 학부모 초기 비밀번호 만들기]로 만들어요. 비어 있으면 학부모가 들어올 수 없어요.',
+      '학부모초기': 'Y면 학부모가 아직 초기 비밀번호를 안 바꾼 상태예요.'
     }
   },
   sets: {
     name: '세트',
     headers: ['세트ID', '세트이름', '학교', '선지수', '사용', '메모'],
-    extra: ['주차', '결과공개'], // 주차: v1.1.0, 결과공개: v1.2.0. 칸이 없어도 동작
-    text: ['세트ID', '세트이름', '학교', '사용'],
+    extra: ['주차', '결과공개', '종류', '학년'], // 주차: v1.1.0, 결과공개: v1.2.0, 종류·학년: v1.4.0. 칸이 없어도 동작
+    text: ['세트ID', '세트이름', '학교', '사용', '종류', '학년'],
     notes: {
       '세트ID': '세트마다 겹치지 않게 정하는 이름. 예: 1107-가나고-1. 문항 탭에도 똑같이 써요.',
       '세트이름': '학생 화면에 보이는 이름이에요.',
@@ -49,6 +52,8 @@ const SHEET_DEFS = {
       '선지수': '비우면 5지선다예요.',
       '사용': 'Y라고 쓰면 학생 화면에 보여요. 지우면 안 보여요.',
       '주차': '몇 주차 세트인지 숫자로 써요. 예: 1. 비우면 누적 리포트(주차별 점수)에서 빠져요.',
+      '종류': '비우면 내신. 학교별 기출 모의평가는 "모의평가"라고 써요. 학생 목록과 누적 리포트에서 따로 보여요.',
+      '학년': '비우면 그 학교 전체. 숫자(예: 1)를 쓰면 학생 탭 학년이 같은 학생에게만 보여요.',
       '결과공개': 'Y면 학생이 제출 뒤 점수와 틀린 문항을 봐요. 비우면 학생에게는 자기가 칠한 답만 보여요(선생님 화면에는 항상 점수가 보여요). 나중에 Y로 바꾸면 그때부터 공개돼요.'
     }
   },
@@ -124,7 +129,11 @@ const ACTIONS = {
   teacherLogin: apiTeacherLogin_,
   teacherToday: apiTeacherToday_,
   myTrend: apiMyTrend_,          // v1.1.0
-  teacherTrend: apiTeacherTrend_ // v1.1.0
+  teacherTrend: apiTeacherTrend_, // v1.1.0
+  teacherEval: apiTeacherEval_,  // v1.3.0
+  parentLogin: apiParentLogin_,  // v1.5.0
+  parentChangePassword: apiParentChangePassword_, // v1.5.0
+  parentReport: apiParentReport_ // v1.5.0
 };
 
 function handle_(req) {
@@ -241,6 +250,7 @@ function apiStudentHome_(req) {
       count: items[set.id].length,
       done: !!d,
       revealed: set.reveal,
+      kind: set.kind,
       score: d && set.reveal ? Number(d['점수']) : null
     };
   });
@@ -417,6 +427,7 @@ function apiTeacherToday_(req) {
       title: set ? set.title : String(groups[id][0]['세트이름'] || id),
       school: set ? set.school : '',
       reveal: set ? set.reveal : false,
+      kind: set ? set.kind : KIND_NAESIN,
       submitted: n,
       avg: n ? round1_(scores.reduce(function (a, b) { return a + b; }, 0) / n) : null,
       max: n ? Math.max.apply(null, scores) : null,
@@ -437,6 +448,219 @@ function apiTeacherToday_(req) {
   return { date: date, today: today, sets: out, warnings: warnings };
 }
 
+/* ───────────── 학부모 화면 (v1.5.0에 추가) ─────────────
+ * 로그인: 학교 + 자녀 이름 + 학부모 비밀번호. 초기 비밀번호는 선생님이 메뉴로 만드는 6자리 번호(해시만 저장).
+ * 학부모는 자기 아이 것만. 다른 학생은 반 평균(집계)으로만. 결과 비공개 세트도 학부모에게는 보임.
+ */
+const PARENT_MIN_AVG_N = 3; // 반 평균은 이 인원 이상 냈을 때만 학부모에게 보여 줌
+const PARENT_COLS = { hash: '학부모비밀번호해시', salt: '학부모솔트', fails: '학부모실패횟수', lockUntil: '학부모잠금해제시각' };
+
+function requireParentCols_(t) {
+  const missing = Object.keys(PARENT_COLS).map(function (k) { return PARENT_COLS[k]; }).concat(['학부모초기'])
+    .filter(function (h) { return !t.has(h); });
+  if (missing.length) throw userErr_('학부모 기능을 쓰려면 시트 메뉴 [내신 관리 → ① 시트 탭 만들기]를 한 번 다시 실행해 주세요.', 'SETUP');
+}
+
+function parentAcc_(t, rec) {
+  return {
+    get: function (f) { return rec[PARENT_COLS[f]]; },
+    set: function (f, v) { t.set(rec, PARENT_COLS[f], v); }
+  };
+}
+
+function apiParentLogin_(req) {
+  const school = norm_(req.school);
+  const name = norm_(req.name);
+  const pw = String(req.password == null ? '' : req.password);
+  if (!school || !name || !pw) throw userErr_('학교, 자녀 이름, 비밀번호를 모두 입력해 주세요.');
+  return withLock_(function () {
+    const t = readTable_('students');
+    requireParentCols_(t);
+    ensureStudentIds_(t);
+    const matches = t.rows.filter(function (r) {
+      return isActive_(r) && norm_(r['학교']) === school && norm_(r['이름']) === name;
+    });
+    if (matches.length === 0) throw userErr_('학교와 자녀 이름을 다시 확인해 주세요. 계속 안 되면 선생님께 문의해 주세요.', 'NOT_FOUND');
+    if (matches.length > 1) throw userErr_('같은 학교에 이름이 같은 학생이 있어요. 선생님께 문의해 주세요.', 'DUPLICATE');
+    const rec = matches[0];
+    if (!String(rec['학부모비밀번호해시'] || '')) {
+      throw userErr_('아직 학부모 비밀번호가 없어요. 선생님께 초기 비밀번호를 받아 주세요.', 'NO_PARENT_PW');
+    }
+    attemptLogin_(parentAcc_(t, rec), pw, false);
+    const mustChange = isYes_(rec['학부모초기']);
+    const token = newSession_({ role: 'parent', sid: String(rec['학생ID']), mustChange: mustChange });
+    return { token: token, name: String(rec['이름']).trim(), school: String(rec['학교']).trim(), mustChange: mustChange };
+  });
+}
+
+function apiParentChangePassword_(req) {
+  const s = getSession_(req.token, 'parent');
+  const np = String(req.newPassword == null ? '' : req.newPassword);
+  if (/\s/.test(np)) throw userErr_('비밀번호에 띄어쓰기는 쓸 수 없어요.');
+  if (np.length < 6) throw userErr_('학부모 비밀번호는 6자 이상으로 정해 주세요.');
+  if (np.length > 30) throw userErr_('비밀번호가 너무 길어요. 30자 이하로 정해 주세요.');
+  const cur = String(req.currentPassword == null ? '' : req.currentPassword);
+  if (np === cur) throw userErr_('지금 비밀번호와 다른 비밀번호로 정해 주세요.');
+  return withLock_(function () {
+    const t = readTable_('students');
+    requireParentCols_(t);
+    const rec = findStudent_(t, s.sid);
+    attemptLogin_(parentAcc_(t, rec), cur, false);
+    const salt = newSalt_();
+    t.set(rec, '학부모솔트', salt);
+    t.set(rec, '학부모비밀번호해시', hashPassword_(np, salt));
+    t.set(rec, '학부모초기', '');
+    s.mustChange = false;
+    saveSession_(s);
+    return {};
+  });
+}
+
+function apiParentReport_(req) {
+  const s = getSession_(req.token, 'parent');
+  if (s.mustChange) throw userErr_('처음 로그인했어요. 먼저 비밀번호를 바꿔 주세요.', 'MUST_CHANGE');
+  const st = findStudent_(readTable_('students'), s.sid);
+  const school = norm_(st['학교']);
+  const setById = setsById_();
+  const items = loadItems_();
+  const kindOf = function (r) { const set = setById[norm_(r['세트ID'])]; return set ? set.kind : KIND_NAESIN; };
+  const subs = readTable_('submissions').rows.filter(function (r) { return norm_(r['학교']) === school; });
+  const mine = subs.filter(function (r) { return String(r['학생ID']) === s.sid; });
+
+  // 반 평균(집계): 같은 학교 학생들의 세트별 점수 평균
+  const setScores = {};
+  subs.forEach(function (r) { const id = norm_(r['세트ID']); (setScores[id] = setScores[id] || []).push(Number(r['점수'])); });
+  // 2명뿐이면 평균과 내 점수로 다른 아이 점수를 알 수 있으니, 3명 이상일 때만 평균을 줌
+  const avgOf = function (arr) { return arr && arr.length >= PARENT_MIN_AVG_N ? round1_(arr.reduce(function (a, b) { return a + b; }, 0) / arr.length) : null; };
+
+  const recent = mine.slice().sort(function (a, b) { return submittedAt_(b) - submittedAt_(a); }).slice(0, 10).map(function (r) {
+    const id = norm_(r['세트ID']);
+    const set = setById[id];
+    return {
+      date: submissionDate_(r),
+      title: set ? set.title : String(r['세트이름'] || id),
+      kind: kindOf(r),
+      score: Number(r['점수']),
+      correct: Number(r['맞은수']),
+      count: Number(r['문항수']),
+      wrong: parseNumList_(r['틀린문항']),
+      blank: parseNumList_(r['비운문항']),
+      classAvg: avgOf(setScores[id]),
+      classN: (setScores[id] || []).length >= PARENT_MIN_AVG_N ? (setScores[id] || []).length : null
+    };
+  });
+
+  // 주차(내신)·회차(모의평가) 추세 + 반 평균
+  const trendOf = function (kind, suffix) {
+    const rowsMine = mine.filter(function (r) { return kindOf(r) === kind; });
+    const me = buildStats_(rowsMine, setById, items, suffix);
+    const bySid = {};
+    subs.forEach(function (r) { if (kindOf(r) === kind) (bySid[String(r['학생ID'])] = bySid[String(r['학생ID'])] || []).push(r); });
+    const weekScores = {};
+    Object.keys(bySid).forEach(function (sid) {
+      buildStats_(bySid[sid], setById, items, suffix).weeks.forEach(function (w) { (weekScores[w.week] = weekScores[w.week] || []).push(w.score); });
+    });
+    return {
+      weeks: me.weeks.map(function (w) {
+        return { week: w.week, label: w.label, score: w.score, classAvg: avgOf(weekScores[w.week]), sets: w.sets.map(function (x) { return { title: x.title, score: x.score }; }) };
+      }),
+      avg: me.avg
+    };
+  };
+
+  const all = buildStats_(mine, setById, items);
+  return {
+    name: String(st['이름']).trim(),
+    school: String(st['학교']).trim(),
+    submitted: mine.length,
+    recent: recent,
+    naesin: trendOf(KIND_NAESIN, '주차'),
+    mock: trendOf(KIND_MOCK, '회'),
+    weak: weakTags_(all.tags),
+    tags: all.tags
+  };
+}
+
+function setParentCodes_(rowNumbers) {
+  return withLock_(function () {
+    const t = readTable_('students');
+    requireParentCols_(t);
+    const out = [];
+    t.rows.forEach(function (r) {
+      if (rowNumbers.indexOf(r._row) < 0 || !norm_(r['이름'])) return;
+      const code = String(100000 + Math.floor(Math.random() * 900000));
+      const salt = newSalt_();
+      t.set(r, '학부모솔트', salt);
+      t.set(r, '학부모비밀번호해시', hashPassword_(code, salt));
+      t.set(r, '학부모실패횟수', '');
+      t.set(r, '학부모잠금해제시각', '');
+      t.set(r, '학부모초기', 'Y');
+      out.push({ name: String(r['이름']).trim(), school: String(r['학교']).trim(), code: code });
+    });
+    return out;
+  });
+}
+
+function unlockParentRows_(rowNumbers) {
+  withLock_(function () {
+    const t = readTable_('students');
+    requireParentCols_(t);
+    t.rows.forEach(function (r) {
+      if (rowNumbers.indexOf(r._row) < 0) return;
+      t.set(r, '학부모실패횟수', '');
+      t.set(r, '학부모잠금해제시각', '');
+    });
+  });
+}
+
+/* ───────────── 학부모 문자용 평가 점수 (v1.3.0에 추가) ─────────────
+ * 맥가이7 출석입력 화면의 '평가 채우기' 버튼이 씀. 선생님만.
+ * 그날 낸 제출을 학생별로 묶어: 총 맞은 수 / 문항 수, 단원별 맞은 수 / 문항 수.
+ */
+function apiTeacherEval_(req) {
+  getSession_(req.token, 'teacher');
+  const date = /^\d{4}-\d{2}-\d{2}$/.test(String(req.date || '')) ? String(req.date) : todayKey_();
+  const setById = setsById_();
+  const items = loadItems_();
+  const by = {};
+  const order = [];
+  readTable_('submissions').rows.forEach(function (r) {
+    if (submissionDate_(r) !== date) return;
+    const sid = String(r['학생ID']);
+    if (!by[sid]) {
+      by[sid] = { name: String(r['이름']).trim(), school: String(r['학교']).trim(), correct: 0, count: 0, sets: [], units: {}, unitOrder: [] };
+      order.push(sid);
+    }
+    const st = by[sid];
+    const id = norm_(r['세트ID']);
+    st.correct += Number(r['맞은수']) || 0;
+    st.count += Number(r['문항수']) || 0;
+    st.sets.push(setById[id] ? setById[id].title : String(r['세트이름'] || id));
+    const wrong = parseNumList_(r['틀린문항']);
+    const answered = answeredNumbers_(r['답안']);
+    (items[id] || []).forEach(function (it) {
+      if (answered && answered.indexOf(it.no) < 0) return;
+      if (!it.unit) return;
+      if (!st.units[it.unit]) { st.units[it.unit] = { unit: it.unit, correct: 0, total: 0 }; st.unitOrder.push(it.unit); }
+      st.units[it.unit].total++;
+      if (wrong.indexOf(it.no) < 0) st.units[it.unit].correct++;
+    });
+  });
+  // v1.5.0: 학부모 비밀번호를 만들어 둔 학생인지 (평가 채우기가 리포트 링크 줄을 넣을지 정할 때 씀)
+  const stTable = readTable_('students');
+  const hasParent = {};
+  if (stTable.has('학부모비밀번호해시')) {
+    stTable.rows.forEach(function (r) { if (norm_(r['학부모비밀번호해시'])) hasParent[String(r['학생ID'])] = true; });
+  }
+  return {
+    date: date,
+    students: order.map(function (sid) {
+      const st = by[sid];
+      return { name: st.name, school: st.school, correct: st.correct, count: st.count, sets: st.sets, units: st.unitOrder.map(function (u) { return st.units[u]; }), parent: !!hasParent[sid] };
+    })
+  };
+}
+
 /* ───────────── 누적 리포트 (v1.1.0에 추가) ─────────────
  * 주차: 세트 탭의 '주차' 칸. 비어 있으면 주차별 점수에서 빠짐(세부항목 집계에는 들어감).
  * 주차 점수: 그 주차 세트 점수(100점 환산)의 평균.
@@ -452,8 +676,20 @@ function apiMyTrend_(req) {
   const mine = readTable_('submissions').rows.filter(function (r) { return String(r['학생ID']) === s.sid; });
   // v1.2.0: 결과를 공개한 세트만 학생 추이에 넣음
   const rows = mine.filter(function (r) { const set = setById[norm_(r['세트ID'])]; return set && set.reveal; });
-  const st = buildStats_(rows, setById, items);
+  // v1.4.0: 주차별 점수는 내신만, 모의평가는 회차별로 따로. 세부항목은 함께 집계.
+  const isMock = function (r) { const set = setById[norm_(r['세트ID'])]; return set && set.kind === KIND_MOCK; };
+  const st = buildStats_(rows.filter(function (r) { return !isMock(r); }), setById, items);
+  const mk = buildStats_(rows.filter(isMock), setById, items, '회');
+  const all = buildStats_(rows, setById, items);
+  st.tags = all.tags;
   return {
+    mock: {
+      weeks: mk.weeks.map(function (w) {
+        return { week: w.week, label: w.label, score: w.score, sets: w.sets.map(function (x) { return { title: x.title, score: x.score }; }) };
+      }),
+      avg: mk.avg,
+      submitted: rows.filter(isMock).length
+    },
     hidden: mine.length - rows.length,
     weeks: st.weeks.map(function (w) {
       return { week: w.week, label: w.label, score: w.score, sets: w.sets.map(function (x) { return { title: x.title, score: x.score }; }) };
@@ -479,8 +715,12 @@ function apiTeacherTrend_(req) {
 
   const setById = setsById_();
   const items = loadItems_();
+  const kind = req.kind === KIND_MOCK ? KIND_MOCK : KIND_NAESIN; // v1.4.0
+  const suffix = kind === KIND_MOCK ? '회' : '주차';
+  const kindOf = function (r) { const set = setById[norm_(r['세트ID'])]; return set ? set.kind : KIND_NAESIN; };
   const bySid = {};
   readTable_('submissions').rows.forEach(function (r) {
+    if (kindOf(r) !== kind) return;
     const sid = String(r['학생ID']);
     (bySid[sid] = bySid[sid] || []).push(r);
   });
@@ -492,7 +732,7 @@ function apiTeacherTrend_(req) {
       const set = setById[norm_(x['세트ID'])];
       if (!set || set.week == null) unweeked[norm_(x['세트ID'])] = set ? set.title : String(x['세트이름'] || x['세트ID']);
     });
-    const st = buildStats_(rows, setById, items);
+    const st = buildStats_(rows, setById, items, suffix);
     const weeks = {};
     st.weeks.forEach(function (w) { weeks[w.week] = { score: w.score, sets: w.sets.map(function (x) { return { title: x.title, score: x.score }; }) }; });
     return {
@@ -512,10 +752,12 @@ function apiTeacherTrend_(req) {
   weekNums.sort(function (a, b) { return a - b; });
   const weeks = weekNums.map(function (w) {
     const scores = list.filter(function (x) { return x.weeks[w]; }).map(function (x) { return x.weeks[w].score; });
-    return { week: w, label: w + '주차', n: scores.length, avg: scores.length ? round1_(scores.reduce(function (a, b) { return a + b; }, 0) / scores.length) : null };
+    return { week: w, label: w + suffix, n: scores.length, avg: scores.length ? round1_(scores.reduce(function (a, b) { return a + b; }, 0) / scores.length) : null };
   });
 
   return {
+    kinds: [KIND_NAESIN, KIND_MOCK],
+    kind: kind,
     schools: schools,
     school: school,
     weeks: weeks,
@@ -531,7 +773,7 @@ function setsById_() {
 }
 
 /** 한 학생의 제출 기록 → 주차별 점수 + 세부항목 정답률 */
-function buildStats_(rows, setById, items) {
+function buildStats_(rows, setById, items, suffix) {
   const byWeek = {};
   const tags = {};
   let unweeked = 0;
@@ -554,7 +796,7 @@ function buildStats_(rows, setById, items) {
   });
   const weeks = Object.keys(byWeek).map(Number).sort(function (a, b) { return a - b; }).map(function (k) {
     const w = byWeek[k];
-    w.label = k + '주차';
+    w.label = k + (suffix || '주차');
     w.score = round1_(w.sets.reduce(function (a, x) { return a + x.score; }, 0) / w.sets.length);
     return w;
   });
@@ -588,6 +830,16 @@ function answeredNumbers_(v) {
     if (m) nums.push(Number(m[1]));
   });
   return nums.length ? nums : null;
+}
+
+/* v1.4.0: 세트 종류·학년 */
+const KIND_NAESIN = '내신';
+const KIND_MOCK = '모의평가';
+function parseKind_(v) { return /모의/.test(String(v == null ? '' : v)) ? KIND_MOCK : KIND_NAESIN; }
+/** 학년 칸: 1 / "1" / "고1" / "중1" → "1", 비었으면 "" */
+function gradeKey_(v) {
+  const m = String(v == null ? '' : v).match(/\d+/);
+  return m ? String(Number(m[0])) : '';
 }
 
 /** 주차 칸: 1 / "1" / "1주차" → 1, 비었으면 null */
@@ -702,7 +954,9 @@ function loadSets_() {
       choices: choices,
       on: isYes_(r['사용']),
       week: parseWeek_(r['주차']),
-      reveal: isYes_(r['결과공개']) // v1.2.0
+      reveal: isYes_(r['결과공개']), // v1.2.0
+      kind: parseKind_(r['종류']),    // v1.4.0
+      grade: gradeKey_(r['학년'])     // v1.4.0
     };
   });
 }
@@ -750,8 +1004,11 @@ function setProblem_(set, items) {
 
 function visibleSets_(st, items) {
   const school = norm_(st['학교']);
+  const grade = gradeKey_(st['학년']);
   return loadSets_().filter(function (set) {
-    return set.on && (!set.school || norm_(set.school) === school) && !setProblem_(set, items[set.id]);
+    return set.on && (!set.school || norm_(set.school) === school) &&
+      (!set.grade || set.grade === grade) && // v1.4.0: 학년 칸이 있으면 그 학년만
+      !setProblem_(set, items[set.id]);
   }).reverse(); // 시트 아래쪽(최근에 넣은 것)부터
 }
 
@@ -923,7 +1180,9 @@ function readTable_(key) {
   return {
     sheet: sh,
     rows: rows,
+    has: function (header) { return header in col; },
     set: function (rowObj, header, value) {
+      if (!(header in col)) throw userErr_('[' + def.name + '] 탭에 [' + header + '] 칸이 없어요. 시트 메뉴 [내신 관리 → 시트 탭 만들기]를 다시 실행해 주세요.', 'SETUP');
       sh.getRange(rowObj._row, col[header] + 1).setValue(value);
       rowObj[header] = value;
     },
@@ -988,6 +1247,9 @@ function onOpen() {
     .addItem('선택한 학생 비밀번호 0000으로 되돌리기', 'menuResetStudentPassword')
     .addItem('선택한 학생 잠금 풀기', 'menuUnlockStudent')
     .addSeparator()
+    .addItem('선택한 학생 학부모 초기 비밀번호 만들기', 'menuParentCodes')
+    .addItem('선택한 학생 학부모 잠금 풀기', 'menuUnlockParent')
+    .addSeparator()
     .addItem('서버 버전 보기', 'menuVersion')
     .addToUi();
 }
@@ -1028,6 +1290,31 @@ function menuUnlockStudent() {
   if (!rows) return;
   unlockStudentRows_(rows.rows);
   ui.alert('잠금을 풀었어요: ' + rows.names.join(', '));
+}
+
+function menuParentCodes() {
+  const ui = SpreadsheetApp.getUi();
+  const rows = selectedStudentRows_();
+  if (!rows) return;
+  const ok = ui.alert('학부모 초기 비밀번호 만들기', rows.names.join(', ') + '\n\n이 학생들의 학부모 초기 비밀번호(6자리)를 새로 만들까요? 예전 학부모 비밀번호는 더 이상 쓸 수 없게 돼요.', ui.ButtonSet.OK_CANCEL);
+  if (ok !== ui.Button.OK) return;
+  const list = setParentCodes_(rows.rows);
+  const html = HtmlService.createHtmlOutput(
+    '<div style="font-family:sans-serif;font-size:14px;line-height:1.8">' +
+    '<p><b>이 창을 닫으면 번호를 다시 볼 수 없어요.</b> 복사해서 학부모님께 문자로 보내 주세요.<br>시트에는 알아볼 수 없는 해시로만 저장돼요.</p>' +
+    '<textarea style="width:100%;height:260px;font-size:14px" onclick="this.select()">' +
+    list.map(function (x) { return x.name + ' (' + x.school + ') 학부모 초기 비밀번호: ' + x.code; }).join('\n') +
+    '</textarea><p>학부모 화면: 학생 화면 주소 뒤에 parent.html (예: …/naesin/parent.html)<br>처음 로그인하면 새 비밀번호로 바꾸게 돼요.</p></div>'
+  ).setWidth(520).setHeight(440);
+  ui.showModalDialog(html, '학부모 초기 비밀번호');
+}
+
+function menuUnlockParent() {
+  const ui = SpreadsheetApp.getUi();
+  const rows = selectedStudentRows_();
+  if (!rows) return;
+  unlockParentRows_(rows.rows);
+  ui.alert('학부모 잠금을 풀었어요: ' + rows.names.join(', '));
 }
 
 function menuVersion() {

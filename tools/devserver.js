@@ -66,6 +66,26 @@ function makeDemo() {
   at('2026-10-31T17:00:00+09:00');
   submit('샘플고A', '가상학생01', 'DEMO-ALL', { 1: [1], 2: [2], 3: [3], 4: [5], 5: [5] }); // 주차 없는 세트
 
+  // v1.4.0: 학교별 기출 모의평가 (가짜, 2학년, 배점이 문항마다 다름)
+  const mockPts = [3.2, 3.5, 4.1, 3.8, 4.4, 3.0, 3.6, 4.2, 3.9, 4.3, 3.3, 3.7, 4.0, 3.4, 4.5];
+  const mockKeys = {};
+  [1, 2, 3].forEach((n) => {
+    const id = 'DEMO-A-MOCK' + n;
+    setSheet.addRow({ 세트ID: id, 세트이름: `[가짜] 샘플고A 2학기 기출 모의평가 ${n}회`, 학교: '샘플고A', 학년: '2', 사용: 'Y', 주차: n, 결과공개: 'Y', 종류: '모의평가' });
+    mockKeys[id] = mockPts.map((p, i) => ((i * 3 + n) % 5) + 1);
+    mockPts.forEach((p, i) => g.sheet('문항').addRow({ 세트ID: id, 번호: i + 1, 정답: String(mockKeys[id][i]), 배점: p, 단원: i < 8 ? '고전시가' : '문법', 세부항목: i < 8 ? tagsA[i % 4] : (i % 2 ? '음운 변동' : '품사') }));
+  });
+  const mockSkill = { 가상학생01: [0.85, 0.9], 가상학생02: [0.55, 0.7], 가상학생03: [0.7, 0.66], 가상학생04: [0.5, 0.6] };
+  [['2026-10-22T18:00:00+09:00', 1], ['2026-11-05T18:00:00+09:00', 2]].forEach(([d, n]) => {
+    at(d);
+    const id = 'DEMO-A-MOCK' + n;
+    Object.entries(mockSkill).forEach(([name, ps]) => {
+      const answers = {};
+      mockKeys[id].forEach((k, i) => { answers[i + 1] = [rand() < ps[n - 1] ? k : (k % 5) + 1]; });
+      submit('샘플고A', name, id, answers);
+    });
+  });
+
   // 오늘(4주차) 제출
   at('2026-11-07T17:40:00+09:00');
   const key = { 1: [3], 2: [2, 4], 3: [1], 4: [5], 5: [4], 6: [2], 7: [1, 3], 8: [3], 9: [5], 10: [2], 11: [4], 12: [1] };
@@ -79,13 +99,28 @@ function makeDemo() {
   submit('샘플고B', '가상학생07', 'DEMO-B-1', Object.assign({}, keyB, { 4: [2], 9: [1] }));
   submit('샘플고B', '가상학생08', 'DEMO-B-1', Object.assign({}, keyB, { 9: [3] }));
   g.ctx.setTeacherPassword_('demo-teacher');
+
+  // v1.5.0 학부모(가짜): 01은 선생님이 준 처음 번호 상태, 02는 이미 바꾼 상태
+  const st = g.sheet('학생');
+  const col = (h) => st.data[0].indexOf(h) + 1;
+  const setParent = (name, pw, first) => {
+    const row = st.objects().find((x) => x.이름 === name)._row;
+    const salt = g.ctx.newSalt_();
+    st.setCell(row, col('학부모솔트'), salt);
+    st.setCell(row, col('학부모비밀번호해시'), g.ctx.hashPassword_(pw, salt));
+    st.setCell(row, col('학부모초기'), first ? 'Y' : '');
+  };
+  setParent('가상학생01', DEMO_PARENT_CODE, true);
+  setParent('가상학생02', DEMO_PARENT_PW, false);
   return g;
 }
+const DEMO_PARENT_CODE = '135790';      // 가짜 학부모 처음 번호
+const DEMO_PARENT_PW = 'parent-demo';   // 가짜 학부모 비밀번호
 
 function start(port = 8765) {
   const g = makeDemo();
   const webDir = path.join(__dirname, '..');
-  const PUBLIC = ['/index.html', '/teacher.html', '/report.html'];
+  const PUBLIC = ['/index.html', '/teacher.html', '/report.html', '/parent.html', '/fill.html', '/fill.js'];
   const server = http.createServer((req, res) => {
     if (req.method === 'POST' && req.url === '/api') {
       let body = '';
@@ -102,16 +137,20 @@ function start(port = 8765) {
     if (p === '/') p = '/index.html';
     if (p === '/config.js') {
       res.writeHead(200, { 'Content-Type': 'text/javascript' });
-      return res.end("window.APP_CONFIG = { API_URL: '/api' };");
+      return res.end(`window.APP_CONFIG = { API_URL: 'http://${req.headers.host}/api' };`);
+    }
+    if (p === '/mock-site.html') { // 맥가이7 출석입력 흉내 (테스트용)
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+      return fs.createReadStream(path.join(__dirname, 'mock-site.html')).pipe(res);
     }
     if (!PUBLIC.includes(p)) { res.writeHead(404); return res.end('not found'); }
     const f = path.join(webDir, p);
-    const type = f.endsWith('.html') ? 'text/html; charset=utf-8' : f.endsWith('.js') ? 'text/javascript' : 'application/octet-stream';
+    const type = f.endsWith('.html') ? 'text/html; charset=utf-8' : f.endsWith('.js') ? 'text/javascript; charset=utf-8' : 'application/octet-stream';
     res.writeHead(200, { 'Content-Type': type });
     fs.createReadStream(f).pipe(res);
   });
   return new Promise((resolve) => server.listen(port, () => resolve({ server, g, url: `http://localhost:${port}` })));
 }
 
-module.exports = { start };
+module.exports = { start, DEMO_PARENT_CODE, DEMO_PARENT_PW };
 if (require.main === module) start().then(({ url }) => console.log('dev server', url));

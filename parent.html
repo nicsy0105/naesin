@@ -1,0 +1,426 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex">
+<link rel="icon" href="data:,">
+<title>학습 리포트 · 학부모</title>
+<script src="config.js"></script>
+<style>
+  :root {
+    --paper: #fbfaf6;
+    --card: #ffffff;
+    --ink: #1d1d1f;
+    --muted: #6b6b70;
+    --line: #e7e3da;
+    --omr: #c8243c;
+    --omr-soft: #fcecee;
+    --good: #2b7a3d;
+    --radius: 14px;
+    font-family: "Pretendard", "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", "Noto Sans CJK KR", system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--paper); color: var(--ink); }
+  body { -webkit-text-size-adjust: 100%; }
+  button, input, select { font: inherit; color: inherit; }
+  .app { max-width: 480px; margin: 0 auto; padding: 16px 16px 120px; min-height: 100vh; }
+
+  .brand { display: flex; align-items: center; gap: 8px; font-weight: 700; letter-spacing: -0.01em; margin: 4px 0 20px; }
+  .brand-mark { width: 18px; height: 22px; border: 2px solid var(--omr); border-radius: 50%; position: relative; }
+  .brand-mark::after { content: ""; position: absolute; inset: 3px; border-radius: 50%; background: var(--ink); }
+  .brand small { color: var(--muted); font-weight: 500; margin-left: auto; font-size: 13px; }
+
+  h1 { font-size: 24px; line-height: 1.3; letter-spacing: -0.02em; margin: 0 0 6px; }
+  .lead { color: var(--muted); margin: 0 0 20px; line-height: 1.5; font-size: 15px; }
+
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 20px; }
+  label { display: block; font-size: 14px; font-weight: 600; margin: 0 0 6px; }
+  .field { margin-bottom: 16px; }
+  input, select {
+    width: 100%; height: 50px; border: 1.5px solid var(--line); border-radius: 10px;
+    background: #fff; padding: 0 14px; font-size: 17px; outline: none;
+  }
+  input:focus, select:focus { border-color: var(--ink); }
+  .hint { color: var(--muted); font-size: 13px; margin-top: 6px; }
+  .error { color: var(--omr); font-size: 14px; font-weight: 600; min-height: 20px; margin: 4px 0 12px; line-height: 1.45; }
+
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+    height: 52px; padding: 0 20px; border-radius: 12px; border: 1.5px solid var(--ink);
+    background: var(--ink); color: #fff; font-weight: 700; font-size: 17px; cursor: pointer; width: 100%;
+  }
+  .btn:disabled { opacity: .5; cursor: default; }
+  .btn.ghost { background: transparent; color: var(--ink); }
+  .btn.small { height: 40px; font-size: 15px; width: auto; padding: 0 14px; border-radius: 10px; }
+  .links { display: flex; gap: 18px; justify-content: center; margin-top: 28px; }
+  .link { background: none; border: 0; color: var(--muted); text-decoration: underline; text-underline-offset: 3px; font-size: 14px; cursor: pointer; padding: 6px; }
+
+  /* 세트 목록 */
+  .who { display: flex; align-items: baseline; gap: 8px; margin-bottom: 18px; }
+  .who b { font-size: 22px; letter-spacing: -0.02em; }
+  .who span { color: var(--muted); }
+  .section-title { font-size: 14px; color: var(--muted); font-weight: 600; margin: 22px 0 10px; }
+  .set { display: flex; align-items: center; gap: 12px; background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; margin-bottom: 10px; }
+  .set-main { flex: 1; min-width: 0; }
+  .set-title { font-weight: 700; font-size: 16px; line-height: 1.35; }
+  .set-sub { color: var(--muted); font-size: 13px; margin-top: 3px; }
+  .set .score { font-weight: 800; font-size: 20px; white-space: nowrap; }
+  .set .score small { font-size: 13px; font-weight: 600; color: var(--muted); }
+  .set.done { background: transparent; }
+  .empty { text-align: center; color: var(--muted); padding: 40px 10px; line-height: 1.6; }
+
+  /* OMR */
+  .omr-top { position: sticky; top: 0; z-index: 5; background: var(--paper); padding: 10px 0 12px; margin: -16px 0 0; }
+  .omr-top .row { display: flex; align-items: center; gap: 10px; }
+  .back { background: none; border: 0; font-size: 22px; padding: 4px 8px 4px 0; cursor: pointer; }
+  .omr-title { font-weight: 700; font-size: 16px; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .progress { font-size: 14px; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .progress b { color: var(--ink); }
+  .omr-note { font-size: 13px; color: var(--muted); margin: 8px 0 0; }
+  .omr { background: #fff; border: 1.5px solid var(--omr); border-radius: 10px; overflow: hidden; }
+  .omr-head { display: grid; grid-template-columns: 56px 1fr; background: var(--omr-soft); color: var(--omr); font-size: 12px; font-weight: 700; letter-spacing: .08em; border-bottom: 1.5px solid var(--omr); }
+  .omr-head span { padding: 7px 0; text-align: center; }
+  .omr-head span:first-child { border-right: 1.5px solid var(--omr); }
+  .omr-row { display: grid; grid-template-columns: 56px 1fr; border-bottom: 1px solid #f1d5da; }
+  .omr-row:nth-child(5n+1) { border-bottom: 1.5px solid var(--omr); }
+  .omr-row:last-child { border-bottom: 0; }
+  .omr-no { display: flex; align-items: center; justify-content: center; font-weight: 800; color: var(--omr); border-right: 1.5px solid var(--omr); font-variant-numeric: tabular-nums; font-size: 17px; }
+  .omr-row.marked .omr-no { background: var(--omr-soft); }
+  .bubbles { display: flex; justify-content: space-around; align-items: center; padding: 6px 6px; }
+  .bubble {
+    width: 40px; height: 48px; padding: 0; border: 0; background: none; cursor: pointer;
+    display: flex; align-items: center; justify-content: center; -webkit-tap-highlight-color: transparent;
+  }
+  .bubble span {
+    width: 26px; height: 38px; border-radius: 50%; border: 1.5px solid var(--omr); color: var(--omr);
+    display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 700;
+    transition: background .08s, color .08s;
+  }
+  .bubble[aria-pressed="true"] span { background: var(--ink); border-color: var(--ink); color: rgba(255,255,255,.9); }
+  .bubble:focus-visible span { outline: 2px solid var(--ink); outline-offset: 2px; }
+
+  .bottom { position: fixed; left: 0; right: 0; bottom: 0; padding: 12px 16px calc(12px + env(safe-area-inset-bottom)); background: linear-gradient(to top, var(--paper) 70%, rgba(251,250,246,0)); }
+  .bottom .inner { max-width: 448px; margin: 0 auto; }
+
+  /* 결과 */
+  .result-card { text-align: center; padding: 28px 20px; }
+  .result-label { color: var(--muted); font-size: 14px; font-weight: 600; }
+  .big { font-size: 64px; font-weight: 800; letter-spacing: -0.04em; line-height: 1.1; margin: 6px 0 2px; font-variant-numeric: tabular-nums; }
+  .big small { font-size: 22px; font-weight: 700; color: var(--muted); letter-spacing: 0; margin-left: 2px; }
+  .count { color: var(--muted); font-size: 15px; }
+  .count b { color: var(--ink); }
+  .wrong-box { margin-top: 16px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+  .chip { min-width: 44px; height: 44px; padding: 0 8px; border-radius: 22px; border: 1.5px solid var(--omr); color: var(--omr); display: inline-flex; flex-direction: column; align-items: center; justify-content: center; font-weight: 800; font-size: 16px; line-height: 1; font-variant-numeric: tabular-nums; }
+  .chip.blank { border-style: dashed; }
+  .chip small { font-size: 10px; font-weight: 600; margin-top: 2px; }
+  .perfect { color: var(--good); font-weight: 700; margin-top: 10px; }
+
+  /* 확인 창 */
+  .modal { position: fixed; inset: 0; background: rgba(20,20,22,.45); display: flex; align-items: flex-end; justify-content: center; z-index: 20; padding: 16px; }
+  .modal[hidden] { display: none; }
+  .sheet { background: #fff; width: 100%; max-width: 448px; border-radius: 18px; padding: 22px 20px calc(18px + env(safe-area-inset-bottom)); }
+  .sheet h2 { margin: 0 0 12px; font-size: 20px; }
+  .sheet p { margin: 0 0 8px; line-height: 1.5; }
+  .sheet .warn { color: var(--omr); font-weight: 600; }
+  .sheet .btns { display: flex; gap: 10px; margin-top: 18px; }
+  .spinner { text-align: center; color: var(--muted); padding: 60px 0; }
+
+  /* 내 성적 추이 (v1.1.0) */
+  .card + .card { margin-top: 12px; }
+  .card-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 6px; }
+  .card-head label { margin: 0; }
+  .chart { display: block; margin: 4px 0 6px; overflow: visible; }
+  .chart .grid { stroke: #ece8df; stroke-width: 1; }
+  .chart .ytick, .chart .xtick { font-size: 11px; fill: var(--muted); }
+  .chart .vlabel { font-size: 12px; font-weight: 700; fill: var(--ink); }
+  .tagbar { margin-top: 14px; }
+  .tagbar-top { display: flex; justify-content: space-between; font-size: 15px; }
+  .tagbar-top b { font-variant-numeric: tabular-nums; }
+  .bar { height: 8px; border-radius: 4px; background: #efece5; margin: 6px 0 4px; overflow: hidden; }
+  .bar span { display: block; height: 100%; border-radius: 4px; background: #d9a441; }
+  .bar span.low { background: var(--omr); }
+  .tagbar-sub { font-size: 12px; color: var(--muted); }
+  .wk { padding: 12px 0; border-bottom: 1px solid #f0ede6; }
+  .wk:last-child { border-bottom: 0; padding-bottom: 0; }
+  .wk-head { display: flex; justify-content: space-between; font-size: 15px; }
+  .wk-head span { font-weight: 700; font-variant-numeric: tabular-nums; }
+  .wk-set { display: flex; justify-content: space-between; gap: 12px; font-size: 13px; color: var(--muted); margin-top: 4px; }
+  .wk-set span:last-child { white-space: nowrap; font-variant-numeric: tabular-nums; }
+
+  /* 제출 완료 + 내가 칠한 답 (v1.2.0) */
+  .done-mark { width: 52px; height: 52px; border-radius: 50%; background: var(--ink); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 26px; font-weight: 800; margin: 0 auto 12px; }
+  .submitted-title { font-size: 28px; font-weight: 800; letter-spacing: -0.02em; margin: 6px 0 4px; }
+  .myans { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); column-gap: 14px; margin-top: 6px; }
+  .myans-cell { display: flex; align-items: center; gap: 10px; padding: 9px 2px; border-bottom: 1px solid #f1d5da; }
+  .myans-cell .no { width: 26px; text-align: right; color: var(--omr); font-weight: 800; font-variant-numeric: tabular-nums; }
+  .myans-cell .ch { font-size: 19px; font-weight: 700; letter-spacing: 1px; }
+  .myans-cell.blank .ch { font-size: 13px; color: var(--muted); font-weight: 600; letter-spacing: 0; }
+  .kind { display: inline-block; font-size: 11px; font-weight: 700; color: var(--omr); border: 1px solid #f1c4cb; background: var(--omr-soft); border-radius: 10px; padding: 0 7px; margin-right: 6px; vertical-align: 1px; }
+
+  /* 학부모 리포트 (v1.0.0) */
+  .rec { padding: 14px 0; border-bottom: 1px solid #f0ede6; }
+  .rec:last-child { border-bottom: 0; padding-bottom: 0; }
+  .rec-top { display: flex; align-items: flex-start; gap: 10px; }
+  .rec-main { flex: 1; min-width: 0; }
+  .rec-title { font-weight: 700; font-size: 15px; line-height: 1.4; }
+  .rec-sub { color: var(--muted); font-size: 13px; margin-top: 2px; }
+  .rec-score { font-weight: 800; font-size: 22px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .rec-score small { font-size: 12px; color: var(--muted); font-weight: 600; }
+  .mini-chips { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 8px; }
+  .mini-chips span { min-width: 26px; text-align: center; padding: 1px 6px; border-radius: 12px; border: 1px solid #f1c4cb; color: var(--omr); font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .mini-chips span.blank { border-style: dashed; color: var(--muted); border-color: #c9c5bc; }
+  .legend { display: flex; gap: 14px; font-size: 12px; color: var(--muted); margin: 2px 0; }
+  .legend i { display: inline-block; width: 16px; height: 0; border-top: 2px solid var(--ink); vertical-align: middle; margin-right: 5px; }
+  .legend i.dash { border-top: 2px dashed #a3a09a; }
+  .privacy { font-size: 12px; color: var(--muted); text-align: center; margin-top: 18px; line-height: 1.6; }
+</style>
+</head>
+<body>
+<main id="app" class="app" aria-live="polite"></main>
+<div id="modal" class="modal" hidden></div>
+<script>
+const APP_VERSION = '1.0.0';
+const KEY = 'naesin.parent';
+const $app = document.getElementById('app');
+const $modal = document.getElementById('modal');
+let lastPassword = null;
+
+/* ── 작은 도구들 ── */
+function el(tag, attrs, ...kids) {
+  const n = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs || {})) {
+    if (v == null || v === false) continue;
+    if (k === 'class') n.className = v;
+    else if (k.startsWith('on')) n.addEventListener(k.slice(2), v);
+    else n.setAttribute(k, v === true ? '' : v);
+  }
+  for (const kid of kids.flat()) if (kid != null && kid !== false) n.append(kid instanceof Node ? kid : document.createTextNode(String(kid)));
+  return n;
+}
+const store = {
+  get(k) { try { return JSON.parse(sessionStorage.getItem(k)); } catch (e) { return null; } },
+  set(k, v) { try { sessionStorage.setItem(k, JSON.stringify(v)); } catch (e) {} },
+  del(k) { try { sessionStorage.removeItem(k); } catch (e) {} }
+};
+const remember = {
+  get(k) { try { return localStorage.getItem(k) || ''; } catch (e) { return ''; } },
+  set(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
+};
+function fmtScore(x) { return (Math.round(x * 10) / 10).toString(); }
+function screen(...kids) {
+  $app.replaceChildren(el('div', { class: 'brand' }, el('span', { class: 'brand-mark' }), '학습 리포트', el('small', {}, '학부모')),
+    ...kids.flat(Infinity).filter((k) => k != null && k !== false));
+  window.scrollTo(0, 0);
+}
+function loading(text) { screen(el('div', { class: 'spinner' }, text || '불러오는 중…')); }
+
+class ApiError extends Error { constructor(msg, code) { super(msg); this.code = code; } }
+async function api(action, data) {
+  const url = (window.APP_CONFIG || {}).API_URL || '';
+  if (!/^(https?:)?\//.test(url)) throw new ApiError('서버 주소가 아직 설정되지 않았어요. 선생님께 말씀해 주세요.', 'CONFIG');
+  let res;
+  try {
+    res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify(Object.assign({ action }, data || {}))
+    });
+  } catch (e) { throw new ApiError('인터넷 연결을 확인하고 다시 해 주세요.', 'NETWORK'); }
+  let out;
+  try { out = await res.json(); } catch (e) { throw new ApiError('서버 응답을 읽지 못했어요. 잠시 뒤 다시 해 주세요.', 'SERVER'); }
+  if (!out.ok) throw new ApiError(out.error || '문제가 생겼어요.', out.code);
+  return out;
+}
+function session() { return store.get(KEY); }
+function handleCommon(e) {
+  if (e.code === 'AUTH') { store.del(KEY); showLogin(e.message); return true; }
+  if (e.code === 'MUST_CHANGE') { showChangePw(true); return true; }
+  return false;
+}
+async function busy(btn, text, fn) {
+  const old = btn.textContent;
+  btn.disabled = true; btn.textContent = text;
+  try { return await fn(); } finally { btn.disabled = false; btn.textContent = old; }
+}
+
+
+function session() { return store.get(KEY); }
+function handleCommon(e) {
+  if (e.code === 'AUTH') { store.del(KEY); showLogin(e.message); return true; }
+  if (e.code === 'MUST_CHANGE') { showChangePw(true); return true; }
+  return false;
+}
+async function busy(btn, text, fn) {
+  const old = btn.textContent;
+  btn.disabled = true; btn.textContent = text;
+  try { return await fn(); } finally { btn.disabled = false; btn.textContent = old; }
+}
+function closeModal() { $modal.hidden = true; $modal.replaceChildren(); }
+
+/* ── 로그인 ── */
+async function showLogin(message) {
+  const err = el('div', { class: 'error', role: 'alert' }, message || '');
+  const school = el('select', { id: 'school' }, el('option', { value: '' }, '불러오는 중…'));
+  const name = el('input', { id: 'name', autocomplete: 'off', placeholder: '자녀 이름' });
+  const pw = el('input', { id: 'pw', type: 'password', autocomplete: 'current-password', placeholder: '학부모 비밀번호' });
+  const btn = el('button', { class: 'btn', type: 'submit' }, '리포트 보기');
+  const form = el('form', { class: 'card', onsubmit: async (ev) => {
+    ev.preventDefault(); err.textContent = '';
+    if (!school.value || !name.value.trim() || !pw.value) { err.textContent = '학교, 자녀 이름, 비밀번호를 모두 입력해 주세요.'; return; }
+    try {
+      const r = await busy(btn, '확인 중…', () => api('parentLogin', { school: school.value, name: name.value, password: pw.value }));
+      remember.set('naesin.parent.school', school.value);
+      store.set(KEY, { token: r.token, name: r.name, school: r.school });
+      if (r.mustChange) { lastPassword = pw.value; showChangePw(true); } else showReport();
+    } catch (e) { err.textContent = e.message; pw.value = ''; pw.focus(); }
+  } },
+    el('div', { class: 'field' }, el('label', { for: 'school' }, '학교'), school),
+    el('div', { class: 'field' }, el('label', { for: 'name' }, '자녀 이름'), name),
+    el('div', { class: 'field' }, el('label', { for: 'pw' }, '학부모 비밀번호'), pw,
+      el('div', { class: 'hint' }, '처음에는 선생님께 받은 6자리 번호를 입력하세요.')),
+    err, btn);
+  screen(el('h1', {}, '학부모 로그인'), el('p', { class: 'lead' }, '자녀의 클리닉 테스트 결과와 학습 추세를 볼 수 있어요.'), form);
+  try {
+    const r = await api('schools');
+    const saved = remember.get('naesin.parent.school');
+    school.replaceChildren(el('option', { value: '' }, '학교 선택'), ...r.schools.map((s) => el('option', { value: s, selected: s === saved }, s)));
+  } catch (e) { school.replaceChildren(el('option', { value: '' }, '불러오지 못함')); err.textContent = e.message; }
+}
+
+/* ── 비밀번호 바꾸기 ── */
+function showChangePw(forced) {
+  const s = session();
+  if (!s) return showLogin();
+  const needCurrent = !(forced && lastPassword);
+  const err = el('div', { class: 'error', role: 'alert' });
+  const cur = el('input', { id: 'cur', type: 'password', autocomplete: 'current-password' });
+  const np = el('input', { id: 'np', type: 'password', autocomplete: 'new-password' });
+  const np2 = el('input', { id: 'np2', type: 'password', autocomplete: 'new-password' });
+  const btn = el('button', { class: 'btn', type: 'submit' }, '비밀번호 바꾸기');
+  const form = el('form', { class: 'card', onsubmit: async (ev) => {
+    ev.preventDefault(); err.textContent = '';
+    if (np.value !== np2.value) { err.textContent = '새 비밀번호 두 개가 서로 달라요.'; return; }
+    try {
+      await busy(btn, '바꾸는 중…', () => api('parentChangePassword', { token: s.token, currentPassword: needCurrent ? cur.value : lastPassword, newPassword: np.value }));
+      lastPassword = null;
+      showReport();
+    } catch (e) { if (e.code === 'AUTH') handleCommon(e); else err.textContent = e.message; }
+  } },
+    needCurrent ? el('div', { class: 'field' }, el('label', { for: 'cur' }, '지금 비밀번호'), cur) : null,
+    el('div', { class: 'field' }, el('label', { for: 'np' }, '새 비밀번호'), np, el('div', { class: 'hint' }, '6자 이상으로 정해 주세요. 자녀와 다른 비밀번호를 권해요.')),
+    el('div', { class: 'field' }, el('label', { for: 'np2' }, '새 비밀번호 한 번 더'), np2),
+    err, btn);
+  screen(el('h1', {}, forced ? '새 비밀번호 정하기' : '비밀번호 바꾸기'),
+    el('p', { class: 'lead' }, forced ? `${s.name} 학생 학부모님, 처음 로그인하셨어요. 학부모님만 아는 비밀번호로 바꿔 주세요.` : '새 비밀번호를 정해 주세요.'),
+    form,
+    forced ? null : el('div', { class: 'links' }, el('button', { class: 'link', onclick: () => showReport() }, '돌아가기')));
+  (needCurrent ? cur : np).focus();
+}
+
+/* ── 리포트 ── */
+function fmtDate(d) { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(d || ''); return m ? `${Number(m[2])}/${Number(m[3])}` : d; }
+async function showReport() {
+  const s = session();
+  if (!s) return showLogin();
+  loading();
+  let r;
+  try { r = await api('parentReport', { token: s.token }); }
+  catch (e) { if (!handleCommon(e)) screen(el('div', { class: 'error' }, e.message), el('button', { class: 'btn ghost', onclick: () => showReport() }, '다시 시도')); return; }
+  const head = el('div', { class: 'who' }, el('b', {}, `${r.name} 학생 학습 리포트`), el('span', {}, r.school));
+  if (!r.submitted) {
+    screen(head, el('div', { class: 'card empty' }, '아직 제출한 테스트가 없어요.'), footer());
+    return;
+  }
+  const recentCard = el('div', { class: 'card' },
+    el('label', {}, '최근 테스트 결과'),
+    r.recent.map((x) => {
+      const blank = new Set(x.blank);
+      return el('div', { class: 'rec' },
+        el('div', { class: 'rec-top' },
+          el('div', { class: 'rec-main' },
+            el('div', { class: 'rec-title' }, x.kind === '모의평가' ? el('span', { class: 'kind' }, '모의평가') : null, x.title),
+            el('div', { class: 'rec-sub' }, `${fmtDate(x.date)} · 맞은 문항 ${x.correct}/${x.count}` + (x.classAvg != null ? ` · 반 평균 ${fmtScore(x.classAvg)}점` : ''))),
+          el('div', { class: 'rec-score' }, fmtScore(x.score), el('small', {}, '점'))),
+        x.wrong.length ? el('div', { class: 'mini-chips', title: '틀린 문항 번호' },
+          el('small', { style: 'color:var(--muted);font-size:12px;margin-right:2px' }, '틀린 문항'),
+          x.wrong.map((n) => el('span', { class: blank.has(n) ? 'blank' : '', title: blank.has(n) ? '비움' : '' }, String(n)))) : el('div', { class: 'rec-sub', style: 'margin-top:6px;color:var(--good);font-weight:600' }, '모두 맞았어요'));
+    }));
+  const trendCard = (t, title, unit) => t.weeks.length ? el('div', { class: 'card' },
+    el('div', { class: 'card-head' }, el('label', {}, title), el('span', { class: 'hint' }, `평균 ${fmtScore(t.avg)}점`)),
+    el('div', { class: 'legend' }, el('span', {}, el('i'), `${r.name}`), t.weeks.some((w) => w.classAvg != null) ? el('span', {}, el('i', { class: 'dash' }), '반 평균') : null),
+    lineChart({
+      labels: t.weeks.map((w) => w.label),
+      series: [
+        { name: '반 평균', values: t.weeks.map((w) => w.classAvg), color: '#a3a09a', dash: '5 4' },
+        { name: r.name, values: t.weeks.map((w) => w.score), color: '#1d1d1f', labelLast: true }
+      ],
+      ariaLabel: title + ': ' + t.weeks.map((w) => `${w.label} ${fmtScore(w.score)}점` + (w.classAvg != null ? `(반 평균 ${fmtScore(w.classAvg)}점)` : '')).join(', ')
+    }),
+    el('div', { class: 'hint' }, `${unit} 점수는 그 ${unit}에 푼 테스트 점수의 평균이에요. 반 평균은 같은 학교 수강생 평균이고, 3명 이상 냈을 때만 보여요.`)) : null;
+  const weakCard = el('div', { class: 'card' },
+    el('label', {}, '보충이 필요한 부분'),
+    r.weak.length ? r.weak.map(tagBar) : el('div', { class: 'hint', style: 'margin-top:8px' }, r.tags.length ? '지금은 특별히 약한 부분이 없어요.' : '아직 집계할 기록이 없어요.'),
+    r.weak.length ? el('div', { class: 'hint', style: 'margin-top:14px' }, '2문항 이상 풀었고 정답률이 80%보다 낮은 세부 항목이에요.') : null);
+  screen(head, recentCard, trendCard(r.naesin, '주차별 점수 (내신)', '주차'), trendCard(r.mock, '모의평가 회차별 점수', '회차'), weakCard, footer());
+}
+function footer() {
+  return el('div', {},
+    el('div', { class: 'privacy' }, '다른 학생의 이름과 점수는 보이지 않고, 같은 학교 수강생 평균만 보여요.'),
+    el('div', { class: 'links' },
+      el('button', { class: 'link', onclick: () => showChangePw(false) }, '비밀번호 바꾸기'),
+      el('button', { class: 'link', onclick: () => { store.del(KEY); showLogin(); } }, '로그아웃')));
+}
+
+/* 막대·그래프 (학생 화면과 같은 모양) */
+function tagBar(t) {
+  return el('div', { class: 'tagbar' },
+    el('div', { class: 'tagbar-top' }, el('span', {}, t.detail || t.tag), el('b', {}, `${t.rate}%`)),
+    el('div', { class: 'bar' }, el('span', { class: t.rate < 60 ? 'low' : '', style: `width:${Math.max(t.rate, 2)}%` })),
+    el('div', { class: 'tagbar-sub' }, `${t.detail && t.unit ? t.unit + ' · ' : ''}${t.total}문항 중 ${t.correct}개 맞음`));
+}
+
+/* 꺾은선 그래프 (0~100점). values의 null은 끊어서 그림 */
+const SVGNS = 'http://www.w3.org/2000/svg';
+function svgEl(tag, attrs, ...kids) {
+  const n = document.createElementNS(SVGNS, tag);
+  for (const [k, v] of Object.entries(attrs || {})) if (v != null) n.setAttribute(k, v);
+  for (const kid of kids.flat()) if (kid != null) n.append(kid instanceof Node ? kid : document.createTextNode(String(kid)));
+  return n;
+}
+function lineChart({ labels, series, width = 340, height = 170, axis = true, ariaLabel = '' }) {
+  const pad = axis ? { l: 30, r: 36, t: 12, b: 26 } : { l: 4, r: 4, t: 4, b: 4 };
+  const iw = width - pad.l - pad.r, ih = height - pad.t - pad.b, n = labels.length;
+  const x = (i) => pad.l + (n === 1 ? iw / 2 : (iw * i) / (n - 1));
+  const y = (v) => pad.t + ih - (ih * v) / 100;
+  const root = svgEl('svg', { viewBox: `0 0 ${width} ${height}`, width: '100%', role: 'img', 'aria-label': ariaLabel, class: 'chart' });
+  if (axis) {
+    [0, 50, 100].forEach((v) => root.append(
+      svgEl('line', { x1: pad.l, x2: width - pad.r, y1: y(v), y2: y(v), class: 'grid' }),
+      svgEl('text', { x: pad.l - 6, y: y(v) + 4, class: 'ytick', 'text-anchor': 'end' }, String(v))));
+    labels.forEach((l, i) => root.append(svgEl('text', { x: x(i), y: height - 6, class: 'xtick', 'text-anchor': 'middle' }, l)));
+  }
+  series.forEach((s) => {
+    let d = '', pen = false, last = -1;
+    s.values.forEach((v, i) => {
+      if (v == null) { pen = false; return; }
+      d += (pen ? 'L' : 'M') + x(i).toFixed(1) + ' ' + y(v).toFixed(1); pen = true; last = i;
+    });
+    root.append(svgEl('path', { d, fill: 'none', stroke: s.color, 'stroke-width': 2, 'stroke-linejoin': 'round', 'stroke-linecap': 'round', 'stroke-dasharray': s.dash || null }));
+    s.values.forEach((v, i) => {
+      if (v == null) return;
+      root.append(svgEl('circle', { cx: x(i), cy: y(v), r: axis ? 4 : 2.2, fill: s.color, stroke: '#fff', 'stroke-width': axis ? 2 : 1 }));
+      root.append(svgEl('circle', { cx: x(i), cy: y(v), r: axis ? 14 : 7, fill: 'transparent' },
+        svgEl('title', {}, `${s.name ? s.name + ' · ' : ''}${labels[i]} ${fmtScore(v)}점`)));
+    });
+    if (axis && s.labelLast && last >= 0) root.append(svgEl('text', { x: x(last) + 8, y: y(s.values[last]) + 4, class: 'vlabel' }, fmtScore(s.values[last])));
+  });
+  return root;
+}
+
+
+if (session()) showReport(); else showLogin();
+</script>
+</body>
+</html>

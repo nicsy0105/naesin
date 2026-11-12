@@ -109,10 +109,11 @@
 <body>
 <div id="app"></div>
 <script>
-const APP_VERSION = '1.1.0';
+const APP_VERSION = '1.2.0';
 const KEY = 'naesin.teacher';
 const $app = document.getElementById('app');
 let currentSchool = '';
+let currentKind = '내신'; // v1.2.0: 내신 / 모의평가
 
 function el(tag, attrs, ...kids) {
   const n = document.createElement(tag);
@@ -174,6 +175,8 @@ async function showReport() {
   const s = store.get(KEY);
   if (!s) return showLogin();
   const schoolSel = el('select', { 'aria-label': '학교', onchange: () => { currentSchool = schoolSel.value; load(); } });
+  const kindSel = el('select', { 'aria-label': '종류', onchange: () => { currentKind = kindSel.value; load(); } },
+    ['내신', '모의평가'].map((k) => el('option', { value: k, selected: k === currentKind }, k)));
   const sub = el('div', { class: 'sub' }, '불러오는 중…');
   const body = el('div');
   const foot = el('footer');
@@ -182,14 +185,14 @@ async function showReport() {
     el('div', { class: 'top' },
       el('div', {}, el('h1', {}, '누적 리포트'), sub),
       el('div', { class: 'tools' },
-        schoolSel,
+        kindSel, schoolSel,
         el('a', { class: 'btn ghost', href: 'teacher.html' }, '← 오늘 결과'),
         el('button', { class: 'btn ghost', onclick: () => { store.del(KEY); showLogin(); } }, '로그아웃'))),
     body, foot));
 
   async function load() {
     let r;
-    try { r = await api('teacherTrend', { token: s.token, school: currentSchool || undefined }); }
+    try { r = await api('teacherTrend', { token: s.token, school: currentSchool || undefined, kind: currentKind }); }
     catch (e) {
       if (e.code === 'AUTH') { store.del(KEY); return showLogin(e.message); }
       sub.textContent = e.message; return;
@@ -197,14 +200,16 @@ async function showReport() {
     currentSchool = r.school;
     fill(schoolSel, r.schools.map((x) => el('option', { value: x, selected: x === r.school }, x)));
     const range = r.weeks.length ? ` · ${r.weeks[0].label}~${r.weeks[r.weeks.length - 1].label}` : '';
-    sub.textContent = r.school ? `${r.school} · 재원생 ${r.students.length}명${range}` : '학생 탭에 학생을 먼저 넣어 주세요.';
+    currentKind = r.kind || '내신';
+    sub.textContent = r.school ? `${currentKind} · ${r.school} · 재원생 ${r.students.length}명${range}` : '학생 탭에 학생을 먼저 넣어 주세요.';
     foot.textContent = `서버 v${r.version} · 화면 v${APP_VERSION}`;
     fill(body,
       r.unweekedSets.length ? el('div', { class: 'note' },
-        el('b', {}, '주차 칸이 비어 있어서 주차별 점수에서 빠진 세트가 있어요. '),
+        el('b', {}, currentKind === '모의평가' ? '주차(회차) 칸이 비어 있어서 회차별 점수에서 빠진 세트가 있어요. ' : '주차 칸이 비어 있어서 주차별 점수에서 빠진 세트가 있어요. '),
         '세트 탭의 주차 칸에 숫자를 쓰면 들어가요: ',
         r.unweekedSets.map((x) => x.title).join(', ')) : null,
-      r.students.length ? renderTable(r) : el('div', { class: 'card empty' }, '이 학교에 재원생이 없어요.'));
+      r.students.length ? renderTable(r) : el('div', { class: 'card empty' }, '이 학교에 재원생이 없어요.'),
+      r.students.length && !r.weeks.length ? el('div', { class: 'note', style: 'margin-top:14px' }, currentKind === '모의평가' ? '아직 이 학교의 모의평가 제출이 없어요. 세트 탭 종류 칸에 "모의평가"라고 쓴 세트가 여기 모여요.' : '아직 주차가 정해진 내신 제출이 없어요.') : null);
   }
   load();
 }
@@ -247,13 +252,13 @@ function renderTable(r) {
   });
   return el('div', { class: 'card' },
     el('div', { class: 'scroll' }, el('table', {}, el('thead', {}, head), tbody)),
-    el('div', { class: 'key' }, '주차 점수 = 그 주차 세트 점수의 평균 · 바탕색: 60점 미만 빨강, 60~79점 노랑 · 약한 세부항목: 2문항 이상 풀고 정답률 80% 미만인 것 중 낮은 순 3개 · 학생 이름을 누르면 자세히 볼 수 있어요'));
+    el('div', { class: 'key' }, (currentKind === '모의평가' ? '회차 점수 = 그 회차 세트 점수의 평균 · ' : '주차 점수 = 그 주차 세트 점수의 평균 · ') + '바탕색: 60점 미만 빨강, 60~79점 노랑 · 약한 세부항목: 2문항 이상 풀고 정답률 80% 미만인 것 중 낮은 순 3개 · 학생 이름을 누르면 자세히 볼 수 있어요'));
 }
 
 function renderDetail(st, weeks) {
   if (!st.submitted) return el('div', { class: 'muted' }, '아직 제출한 테스트가 없어요.');
   const left = weeks.length ? el('div', {},
-    el('div', { class: 'label' }, `${st.name} 주차별 점수`),
+    el('div', { class: 'label' }, `${st.name} ${currentKind === '모의평가' ? '회차별' : '주차별'} 점수`),
     el('div', { class: 'legend' }, el('span', {}, el('i'), st.name), el('span', {}, el('i', { class: 'dash' }), '반 평균')),
     lineChart({
       labels: weeks.map((w) => w.label), width: 460, height: 190,
@@ -265,7 +270,7 @@ function renderDetail(st, weeks) {
     }),
     el('div', { class: 'weeks-list' }, weeks.filter((w) => st.weeks[w.week]).map((w) => el('div', {},
       el('b', {}, `${w.label} ${fmt(st.weeks[w.week].score)}점`), ' — ',
-      st.weeks[w.week].sets.map((x) => `${x.title} ${fmt(x.score)}점`).join(' · '))))) : el('div', { class: 'muted' }, '주차가 정해진 세트 기록이 없어요.');
+      st.weeks[w.week].sets.map((x) => `${x.title} ${fmt(x.score)}점`).join(' · '))))) : el('div', { class: 'muted' }, currentKind === '모의평가' ? '회차가 정해진 모의평가 기록이 없어요.' : '주차가 정해진 세트 기록이 없어요.');
   const right = el('div', {},
     el('div', { class: 'label' }, '세부항목별 정답률 (낮은 순)'),
     st.tags.length ? el('table', { class: 'tagtable' }, el('tbody', {}, st.tags.map((t) => el('tr', {},

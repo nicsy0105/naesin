@@ -532,6 +532,262 @@ test('내 성적 추이: 결과를 공개한 세트만 들어가고, 숨긴 세�
   assert.deepStrictEqual(Object.keys(tr.students[0].weeks), ['1', '2']);
 });
 
+/* ── 학부모 문자용 평가 점수 (v1.3.0) ── */
+
+test('평가 점수: 그날 제출을 학생별 총·단원별 맞은 수로 (선생님만)', () => {
+  const g = fresh({ now: '2026-11-06T18:00:00+09:00' });
+  // 문항 탭 단원을 두 갈래로: 1~8번 '고전시가', 9~12번 '문법'
+  const items = g.sheet('문항');
+  const ucol = items.data[0].indexOf('단원');
+  items.objects().filter((x) => x.세트ID === 'DEMO-A-1' && Number(x.번호) >= 9).forEach((x) => { items.data[x._row - 1][ucol] = '문법'; });
+  const t1 = studentReady(g, '샘플고A', '가상학생01');
+  ok(g.call('submit', { token: t1, setId: 'DEMO-A-1', answers: { 1: [1] } })); // 어제 (오늘 결과에 안 들어감)
+  g.advance(24 * 3600000);
+  const t2 = studentReady(g, '샘플고A', '가상학생02');
+  ok(g.call('submit', { token: t2, setId: 'DEMO-A-1', answers: Object.assign({}, KEY_A, { 1: [1], 9: [], 10: [5] }) }));
+  const tt = teacherReady(g);
+  fail(g.call('teacherEval', { token: t2 }), 'AUTH');
+  const r = ok(g.call('teacherEval', { token: tt }));
+  assert.strictEqual(r.date, '2026-11-07');
+  assert.strictEqual(r.students.length, 1);
+  const s = r.students[0];
+  assert.deepStrictEqual([s.name, s.school, s.correct, s.count], ['가상학생02', '샘플고A', 9, 12]);
+  assert.deepStrictEqual(s.units, [{ unit: '고전시가', correct: 7, total: 8 }, { unit: '문법', correct: 2, total: 4 }]);
+  const y = ok(g.call('teacherEval', { token: tt, date: '2026-11-06' }));
+  assert.deepStrictEqual(y.students.map((x) => [x.name, x.correct, x.count]), [['가상학생01', 0, 12]]);
+});
+
+test('평가 점수: 결과 비공개 세트도 선생님에게는 나옴', () => {
+  const g = fresh();
+  setCell(g, 'DEMO-A-1', '결과공개', '');
+  const t = studentReady(g, '샘플고A', '가상학생01');
+  ok(g.call('submit', { token: t, setId: 'DEMO-A-1', answers: KEY_A }));
+  const r = ok(g.call('teacherEval', { token: teacherReady(g) }));
+  assert.strictEqual(r.students[0].correct, 12);
+});
+
+/* ── 세트 종류(내신/모의평가)·학년 (v1.4.0) ── */
+
+function addMock(g, id, title, week, extra) {
+  g.sheet('세트').addRow(Object.assign({ 세트ID: id, 세트이름: title, 학교: '샘플고A', 사용: 'Y', 주차: week, 결과공개: 'Y', 종류: '모의평가' }, extra || {}));
+  // 배점이 문항마다 다른 학교 시험 모양: 3.2 + 4.1 + 2.7 = 10점
+  [['2', 3.2], ['4', 4.1], ['1', 2.7]].forEach(([k, p], i) => g.sheet('문항').addRow({ 세트ID: id, 번호: i + 1, 정답: k, 배점: p, 단원: '고전시가', 세부항목: '화자의 태도' }));
+}
+
+test('시트 탭 만들기: 세트 탭에 종류·학년 칸이 생긴다', () => {
+  const g = loadGas();
+  g.ctx.setupSheets_();
+  const h = g.sheet('세트').data[0];
+  assert.ok(h.includes('종류') && h.includes('학년'));
+});
+
+test('종류 칸: 비우면 내신, "모의평가"·"모의"는 모의평가', () => {
+  const g = loadGas();
+  assert.strictEqual(g.ctx.parseKind_(''), '내신');
+  assert.strictEqual(g.ctx.parseKind_('내신'), '내신');
+  assert.strictEqual(g.ctx.parseKind_('모의평가'), '모의평가');
+  assert.strictEqual(g.ctx.parseKind_('기출 모의'), '모의평가');
+  assert.strictEqual(g.ctx.gradeKey_('고2'), '2');
+  assert.strictEqual(g.ctx.gradeKey_(2), '2');
+  assert.strictEqual(g.ctx.gradeKey_(''), '');
+});
+
+test('학년 칸: 그 학교의 같은 학년 학생에게만 보이고, 비우면 학교 전체', () => {
+  const g = fresh();
+  g.sheet('학생').addRow({ 이름: '가상학생11', 학교: '샘플고A', 학년: '1' });
+  addMock(g, 'MOCK-A2', '[가짜] 2학년 모의평가', 1, { 학년: '고2' });
+  addMock(g, 'MOCK-A', '[가짜] 학교 전체 모의평가', 2);
+  const t2 = studentReady(g, '샘플고A', '가상학생01'); // 2학년
+  const t1 = studentReady(g, '샘플고A', '가상학생11'); // 1학년
+  const ids2 = ok(g.call('studentHome', { token: t2 })).sets.map((x) => x.setId);
+  const ids1 = ok(g.call('studentHome', { token: t1 })).sets.map((x) => x.setId);
+  assert.ok(ids2.includes('MOCK-A2') && ids2.includes('MOCK-A'));
+  assert.ok(!ids1.includes('MOCK-A2') && ids1.includes('MOCK-A'));
+  fail(g.call('getSet', { token: t1, setId: 'MOCK-A2' }), 'NO_SET');
+  const home = ok(g.call('studentHome', { token: t2 }));
+  assert.strictEqual(home.sets.find((x) => x.setId === 'MOCK-A2').kind, '모의평가');
+  assert.strictEqual(home.sets.find((x) => x.setId === 'DEMO-A-1').kind, '내신');
+});
+
+test('모의평가: 배점이 소수여도 100점 환산, 서술형 없이 객관식만', () => {
+  const g = fresh();
+  addMock(g, 'MOCK-A', '[가짜] 모의평가 1회', 1);
+  const t = studentReady(g, '샘플고A', '가상학생01');
+  const r = ok(g.call('submit', { token: t, setId: 'MOCK-A', answers: { 1: [2], 2: [4], 3: [5] } }));
+  assert.strictEqual(r.result.score, 73); // (3.2 + 4.1) / 10 = 73%
+});
+
+test('누적 리포트: 내신과 모의평가를 따로, 모의평가는 N회', () => {
+  const g = fresh({ now: '2026-11-03T18:00:00+09:00' });
+  addMock(g, 'MOCK-A1', '[가짜] 모의평가 1회', 1);
+  addMock(g, 'MOCK-A2', '[가짜] 모의평가 2회', 2);
+  const t = studentReady(g, '샘플고A', '가상학생01');
+  ok(g.call('submit', { token: t, setId: 'DEMO-A-1', answers: KEY_A }));                       // 내신 1주차 100
+  ok(g.call('submit', { token: t, setId: 'MOCK-A1', answers: { 1: [2], 2: [4], 3: [1] } }));    // 모의 1회 100
+  ok(g.call('submit', { token: t, setId: 'MOCK-A2', answers: { 1: [2] } }));                    // 모의 2회 32
+  const tt = teacherReady(g);
+  const n = ok(g.call('teacherTrend', { token: tt }));
+  assert.strictEqual(n.kind, '내신');
+  assert.deepStrictEqual(n.weeks.map((w) => w.label), ['1주차']);
+  assert.strictEqual(n.students[0].submitted, 1);
+  const m = ok(g.call('teacherTrend', { token: tt, kind: '모의평가' }));
+  assert.strictEqual(m.kind, '모의평가');
+  assert.deepStrictEqual(m.weeks.map((w) => [w.label, w.avg]), [['1회', 100], ['2회', 32]]);
+  assert.strictEqual(m.students[0].submitted, 2);
+  // 학생 추이: 내신은 주차, 모의평가는 회차로 따로
+  const my = ok(g.call('myTrend', { token: t }));
+  assert.deepStrictEqual(my.weeks.map((w) => [w.label, w.score]), [['1주차', 100]]);
+  assert.deepStrictEqual(my.mock.weeks.map((w) => [w.label, w.score]), [['1회', 100], ['2회', 32]]);
+  assert.strictEqual(my.mock.avg, 66);
+  // 오늘 결과에 종류 표시
+  const today = ok(g.call('teacherToday', { token: tt }));
+  assert.deepStrictEqual(today.sets.map((x) => x.kind).sort(), ['내신', '모의평가', '모의평가']);
+});
+
+test('종류·학년 칸이 없는 시트: 전부 내신, 학년 거르기 없음', () => {
+  const g = fresh();
+  const sh = g.sheet('세트');
+  ['종류', '학년'].forEach((h) => { const c = sh.data[0].indexOf(h); sh.data.forEach((row) => { row[c] = ''; }); });
+  const t = studentReady(g, '샘플고A', '가상학생01');
+  const home = ok(g.call('studentHome', { token: t }));
+  assert.ok(home.sets.every((x) => x.kind === '내신'));
+  ok(g.call('submit', { token: t, setId: 'DEMO-A-1', answers: KEY_A }));
+  ok(g.call('teacherTrend', { token: teacherReady(g) }));
+});
+
+/* ── 학부모 화면 (v1.5.0) ── */
+
+function parentCodes(g, names) {
+  const rows = g.sheet('학생').objects().filter((x) => names.includes(x.이름)).map((x) => x._row);
+  return Object.fromEntries(Array.from(g.ctx.setParentCodes_(rows)).map((x) => [x.name, x.code]));
+}
+function parentReady(g, school, name, code, pw = 'parent123') {
+  const r = ok(g.call('parentLogin', { school, name, password: code }), '학부모 첫 로그인');
+  assert.strictEqual(r.mustChange, true);
+  ok(g.call('parentChangePassword', { token: r.token, currentPassword: code, newPassword: pw }), '학부모 비번 변경');
+  return ok(g.call('parentLogin', { school, name, password: pw })).token;
+}
+
+test('시트 탭 만들기: 학생 탭에 학부모 칸이 생긴다', () => {
+  const g = loadGas();
+  g.ctx.setupSheets_();
+  const h = g.sheet('학생').data[0];
+  ['학부모비밀번호해시', '학부모솔트', '학부모실패횟수', '학부모잠금해제시각', '학부모초기'].forEach((x) => assert.ok(h.includes(x), x));
+});
+
+test('학부모: 초기 비밀번호 전에는 못 들어오고, 0000도 안 됨', () => {
+  const g = fresh();
+  fail(g.call('parentLogin', { school: '샘플고A', name: '가상학생01', password: '0000' }), 'NO_PARENT_PW');
+});
+
+test('학부모: 초기 번호는 6자리, 시트엔 해시만, 첫 로그인 때 바꿔야 함', () => {
+  const g = fresh();
+  const codes = parentCodes(g, ['가상학생01', '가상학생02']);
+  assert.ok(/^\d{6}$/.test(codes['가상학생01']));
+  assert.notStrictEqual(codes['가상학생01'], codes['가상학생02']);
+  const sheetText = JSON.stringify(g.sheet('학생').data);
+  assert.ok(!sheetText.includes(codes['가상학생01']), '시트에 초기 번호 원문이 없어야 함');
+  const rec = g.sheet('학생').objects().find((x) => x.이름 === '가상학생01');
+  assert.ok(/^[0-9a-f]{64}$/.test(rec.학부모비밀번호해시));
+  assert.strictEqual(rec.학부모초기, 'Y');
+  const r = ok(g.call('parentLogin', { school: '샘플고A', name: '가상학생01', password: codes['가상학생01'] }));
+  fail(g.call('parentReport', { token: r.token }), 'MUST_CHANGE');
+  fail(g.call('parentChangePassword', { token: r.token, currentPassword: codes['가상학생01'], newPassword: '12345' }));
+  fail(g.call('parentChangePassword', { token: r.token, currentPassword: codes['가상학생01'], newPassword: codes['가상학생01'] }));
+  ok(g.call('parentChangePassword', { token: r.token, currentPassword: codes['가상학생01'], newPassword: 'parent123' }));
+  ok(g.call('parentReport', { token: r.token }));
+  fail(g.call('parentLogin', { school: '샘플고A', name: '가상학생01', password: codes['가상학생01'] }), 'BADPW');
+  const rec2 = g.sheet('학생').objects().find((x) => x.이름 === '가상학생01');
+  assert.strictEqual(rec2.학부모초기, '');
+  assert.ok(!JSON.stringify(g.sheet('학생').data).includes('parent123'));
+});
+
+test('학부모·학생 계정은 서로 섞이지 않음', () => {
+  const g = fresh();
+  const codes = parentCodes(g, ['가상학생01']);
+  const ts = studentReady(g, '샘플고A', '가상학생01', 'stud11');
+  fail(g.call('parentLogin', { school: '샘플고A', name: '가상학생01', password: 'stud11' }), 'BADPW');
+  const tp = parentReady(g, '샘플고A', '가상학생01', codes['가상학생01']);
+  fail(g.call('studentLogin', { school: '샘플고A', name: '가상학생01', password: 'parent123' }), 'BADPW');
+  fail(g.call('parentReport', { token: ts }), 'AUTH');
+  fail(g.call('studentHome', { token: tp }), 'AUTH');
+  fail(g.call('teacherToday', { token: tp }), 'AUTH');
+});
+
+test('학부모: 5번 틀리면 잠금, 메뉴로 잠금 풀기', () => {
+  const g = fresh();
+  const codes = parentCodes(g, ['가상학생01']);
+  for (let i = 0; i < 4; i++) fail(g.call('parentLogin', { school: '샘플고A', name: '가상학생01', password: '999999' }), 'BADPW');
+  fail(g.call('parentLogin', { school: '샘플고A', name: '가상학생01', password: '999999' }), 'LOCKED');
+  fail(g.call('parentLogin', { school: '샘플고A', name: '가상학생01', password: codes['가상학생01'] }), 'LOCKED');
+  const row = g.sheet('학생').objects().find((x) => x.이름 === '가상학생01')._row;
+  g.ctx.unlockParentRows_([row]);
+  ok(g.call('parentLogin', { school: '샘플고A', name: '가상학생01', password: codes['가상학생01'] }));
+});
+
+test('학부모 리포트: 자기 아이 것만, 비공개 세트도 보이고, 다른 학생은 반 평균으로만', () => {
+  const g = fresh({ now: '2026-11-03T18:00:00+09:00' });
+  addSet2(g);
+  addMock(g, 'MOCK-A1', '[가짜] 모의평가 1회', 1);
+  setCell(g, 'DEMO-A-2', '결과공개', ''); // 학생에게 비공개
+  const t1 = studentReady(g, '샘플고A', '가상학생01');
+  const t2 = studentReady(g, '샘플고A', '가상학생02');
+  ok(g.call('submit', { token: t1, setId: 'DEMO-A-1', answers: KEY_A }));                                 // 100
+  ok(g.call('submit', { token: t2, setId: 'DEMO-A-1', answers: Object.assign({}, KEY_A, { 1: [1], 2: [2], 3: [] }) })); // 75
+  g.advance(7 * 86400000);
+  ok(g.call('submit', { token: t1, setId: 'DEMO-A-2', answers: { 1: [1], 2: [2], 3: [3], 4: [1] } }));  // 75 (비공개)
+  ok(g.call('submit', { token: t1, setId: 'MOCK-A1', answers: { 1: [2], 2: [4], 3: [1] } }));            // 100
+  const codes = parentCodes(g, ['가상학생01']);
+  const tp = parentReady(g, '샘플고A', '가상학생01', codes['가상학생01']);
+  const r = ok(g.call('parentReport', { token: tp }));
+  assert.strictEqual(r.name, '가상학생01');
+  assert.ok(!JSON.stringify(r).includes('가상학생02'), '다른 학생 이름이 있으면 안 됨');
+  assert.strictEqual(r.submitted, 3);
+  assert.deepStrictEqual(r.recent.map((x) => x.title).slice(0, 2).sort(), ['[가짜] 2주차 점검', '[가짜] 모의평가 1회']);
+  assert.strictEqual(r.recent[2].title, '[가짜] 고전시가 확인 테스트', '최근 것부터');
+  const a1 = r.recent.find((x) => x.title === '[가짜] 고전시가 확인 테스트');
+  assert.deepStrictEqual([a1.score, a1.classAvg, a1.classN], [100, null, null], '2명뿐이면 반 평균을 숨김(다른 아이 점수 역산 방지)');
+  const a2 = r.recent.find((x) => x.title === '[가짜] 2주차 점검');
+  assert.deepStrictEqual([a2.score, a2.wrong], [75, [4]], '비공개 세트도 학부모에게는 보임');
+  assert.deepStrictEqual(r.naesin.weeks.map((w) => [w.label, w.score, w.classAvg]), [['1주차', 100, null], ['2주차', 75, null]]);
+  assert.deepStrictEqual(r.mock.weeks.map((w) => [w.label, w.score]), [['1회', 100]]);
+  assert.ok(Array.isArray(r.weak));
+});
+
+test('학부모 리포트: 반 평균은 3명 이상 냈을 때만', () => {
+  const g = fresh({ now: '2026-11-03T18:00:00+09:00' });
+  const ans = [KEY_A, Object.assign({}, KEY_A, { 1: [1], 2: [2], 3: [] }), Object.assign({}, KEY_A, { 1: [1] })]; // 100, 25, 75
+  const scores = ['가상학생01', '가상학생02', '가상학생03'].map((n, i) => ok(g.call('submit', { token: studentReady(g, '샘플고A', n), setId: 'DEMO-A-1', answers: ans[i] })).result.score);
+  const codes = parentCodes(g, ['가상학생01']);
+  const r = ok(g.call('parentReport', { token: parentReady(g, '샘플고A', '가상학생01', codes['가상학생01']) }));
+  const a = r.recent[0];
+  assert.deepStrictEqual([a.score, a.classN], [100, 3]);
+  assert.strictEqual(a.classAvg, Math.round((scores.reduce((x, y) => x + y, 0) / 3) * 10) / 10, JSON.stringify({ scores, a }));
+  assert.strictEqual(r.naesin.weeks[0].classAvg, a.classAvg, '주차 반 평균도 3명이면 보임');
+  assert.ok(!JSON.stringify(r).includes('가상학생02') && !JSON.stringify(r).includes('가상학생03'));
+});
+
+test('평가 점수: 학부모 비밀번호를 만든 학생만 parent 표시 (v1.5.0)', () => {
+  const g = fresh();
+  const t1 = studentReady(g, '샘플고A', '가상학생01');
+  const t2 = studentReady(g, '샘플고A', '가상학생02');
+  ok(g.call('submit', { token: t1, setId: 'DEMO-A-1', answers: KEY_A }));
+  ok(g.call('submit', { token: t2, setId: 'DEMO-A-1', answers: KEY_A }));
+  parentCodes(g, ['가상학생01']);
+  const r = ok(g.call('teacherEval', { token: teacherReady(g) }));
+  assert.deepStrictEqual(r.students.map((x) => [x.name, x.parent]).sort(), [['가상학생01', true], ['가상학생02', false]]);
+});
+
+test('학부모 칸이 없는 예전 시트: 학부모 로그인은 안내, 다른 기능은 그대로', () => {
+  const g = fresh();
+  const sh = g.sheet('학생');
+  ['학부모비밀번호해시', '학부모솔트', '학부모실패횟수', '학부모잠금해제시각', '학부모초기'].forEach((h) => { const c = sh.data[0].indexOf(h); sh.data.forEach((row) => { row[c] = ''; }); });
+  fail(g.call('parentLogin', { school: '샘플고A', name: '가상학생01', password: '123456' }), 'SETUP');
+  const t = studentReady(g, '샘플고A', '가상학생01');
+  ok(g.call('submit', { token: t, setId: 'DEMO-A-1', answers: KEY_A }));
+  assert.strictEqual(ok(g.call('teacherEval', { token: teacherReady(g) })).students[0].parent, false);
+});
+
 /* ── 실행 ── */
 
 let passed = 0;

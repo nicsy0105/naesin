@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<link rel="icon" href="data:,">
+<title>평가 채우기 버튼 설치</title>
+<style>
+  :root { --paper:#fbfaf6; --ink:#1d1d1f; --muted:#6b6b70; --line:#e7e3da; --omr:#c8243c;
+    font-family:"Pretendard","Apple SD Gothic Neo","Malgun Gothic","Noto Sans KR","Noto Sans CJK KR",system-ui,sans-serif; }
+  body { margin:0; background:var(--paper); color:var(--ink); }
+  .wrap { max-width:760px; margin:0 auto; padding:28px 24px 60px; }
+  .brand { display:flex; align-items:center; gap:8px; font-weight:700; font-size:14px; color:var(--muted); }
+  .brand-mark { width:14px; height:18px; border:2px solid var(--omr); border-radius:50%; position:relative; }
+  .brand-mark::after { content:""; position:absolute; inset:2px; border-radius:50%; background:var(--ink); }
+  h1 { font-size:28px; letter-spacing:-0.03em; margin:12px 0 6px; }
+  .lead { color:var(--muted); margin:0 0 22px; line-height:1.6; }
+  .card { background:#fff; border:1px solid var(--line); border-radius:16px; padding:20px 22px; margin-bottom:14px; }
+  .card h2 { font-size:17px; margin:0 0 10px; }
+  ol { margin:0; padding-left:22px; line-height:1.9; }
+  .bm { display:inline-flex; align-items:center; gap:8px; padding:10px 18px; border-radius:10px; background:var(--ink); color:#fff; font-weight:800; text-decoration:none; font-size:16px; cursor:grab; margin:6px 0 10px; }
+  .bm::before { content:"⠿"; opacity:.6; }
+  .note { color:var(--muted); font-size:14px; line-height:1.7; }
+  kbd { border:1px solid #ccc; border-bottom-width:2px; border-radius:5px; padding:0 5px; font-size:13px; background:#fff; }
+  footer { color:var(--muted); font-size:12px; margin-top:24px; text-align:right; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="brand"><span class="brand-mark"></span>내신 클리닉 · 선생님</div>
+  <h1>평가 채우기 버튼</h1>
+  <p class="lead">맥가이7 출석입력 화면에서 이 버튼을 누르면, 앱에 제출된 그날 점수로 학생마다 <b>평가 칸의 빈 점수</b>를 채워요.<br>
+    저장과 문자 발송은 하지 않아요. 확인한 뒤 선생님이 직접 누르시면 돼요.</p>
+
+  <div class="card">
+    <h2>1. 설치 (처음 한 번)</h2>
+    <ol>
+      <li>즐겨찾기 막대가 안 보이면 <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>B</kbd>를 눌러요.</li>
+      <li>아래 검은 버튼을 마우스로 <b>끌어서 즐겨찾기 막대에 놓아요.</b> (누르는 게 아니라 끌어다 놓기)</li>
+    </ol>
+    <a id="bm" class="bm" href="#" onclick="alert('이 버튼은 누르지 말고 즐겨찾기 막대로 끌어다 놓아 주세요.'); return false;">평가 채우기</a>
+    <div class="note">학원 PC, 노트북처럼 쓰시는 컴퓨터마다 한 번씩 설치해요. 버튼 안에는 학생 정보가 없어요.</div>
+  </div>
+
+  <div class="card">
+    <h2>2. 쓰는 법 (매번)</h2>
+    <ol>
+      <li>맥가이7 <b>클리닉수업관리 → 출석입력</b>에서 날짜를 고르고 <b>[검색]</b></li>
+      <li>평가 칸에 그날 틀(예: <code>- 총 / 30문항</code>, <code>- 품사 :  / 30</code>)이 들어 있는지 확인</li>
+      <li>즐겨찾기 막대의 <b>[평가 채우기]</b> → 내신 클리닉 선생님 비밀번호 입력 (6시간 동안은 다시 안 물어봐요)</li>
+      <li>오른쪽 위 결과 창과 평가 칸을 확인하고 <b>[저장]</b></li>
+      <li><b>클리닉수업문자</b>에서 평소처럼 <b>[문자보내기]</b></li>
+    </ol>
+    <div class="note" style="margin-top:10px">
+      · 채우는 줄: <b>총 / N문항</b>, 그리고 문항 탭의 <b>단원 이름과 같은 줄</b>(예: 품사). 틀의 문항 수와 앱 기록의 문항 수가 같을 때만 채워요.<br>
+      · 자습서·평가문제집, 앱에 없는 테스트 줄, 이미 숫자가 있는 줄은 건드리지 않아요.<br>
+      · 학생은 출석입력의 <b>이름 + 학교</b>로 앱 학생 탭과 맞춰요. 두 곳의 이름·학교가 같아야 해요.
+    </div>
+  </div>
+  <footer>평가 채우기 v1.0.0</footer>
+</div>
+<script>
+  var base = location.origin + location.pathname.replace(/[^/]*$/, '');
+  var code = "(function(){var b='" + base + "';function L(u,c){var s=document.createElement('script');s.src=b+u+'?v='+Date.now();s.charset='utf-8';s.onload=c||null;s.onerror=function(){alert('평가 채우기 파일을 불러오지 못했어요: '+u)};document.head.appendChild(s)}L('config.js',function(){L('fill.js')})})();";
+  document.getElementById('bm').href = 'javascript:' + code;
+</script>
+</body>
+</html>

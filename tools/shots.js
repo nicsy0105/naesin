@@ -1,7 +1,7 @@
 // 화면 테스트 + 캡처: 학생이 로그인→비번 변경→OMR 제출→결과, 선생님이 오늘 결과 확인
 const assert = require('assert');
 const { chromium } = require('/opt/npm-tools/node_modules/playwright');
-const { start } = require('./devserver');
+const { start, DEMO_PARENT_CODE } = require('./devserver');
 
 (async () => {
   const { server, url } = await start();
@@ -34,7 +34,9 @@ const { start } = require('./devserver');
     await page.waitForSelector('.set');
     await page.screenshot({ path: 'shots/s3-home.png' });
     const titles = await page.$$eval('.set-title', (n) => n.map((x) => x.textContent));
-    assert.deepStrictEqual(titles.sort(), ['[가짜] 1주차 고전시가 점검', '[가짜] 2주차 고전시가 점검', '[가짜] 3주차 고전시가 점검', '[가짜] 고전시가 확인 테스트', '[가짜] 공통 어휘 점검']);
+    assert.deepStrictEqual(titles.sort(), ['[가짜] 1주차 고전시가 점검', '[가짜] 2주차 고전시가 점검', '[가짜] 3주차 고전시가 점검', '[가짜] 고전시가 확인 테스트', '[가짜] 공통 어휘 점검',
+      '[가짜] 샘플고A 2학기 기출 모의평가 1회', '[가짜] 샘플고A 2학기 기출 모의평가 2회', '[가짜] 샘플고A 2학기 기출 모의평가 3회']);
+    assert.ok((await page.textContent('#app')).includes('풀 수 있는 모의평가'));
 
     await page.click('.set:has-text("고전시가 확인 테스트") button');
     await page.waitForSelector('.omr-row');
@@ -112,7 +114,8 @@ const { start } = require('./devserver');
     const trendText = await sp.textContent('#app');
     assert.ok(trendText.includes('시어의 의미'));
     assert.ok(!trendText.includes('가상학생01'), '다른 학생 이름이 보이면 안 됨');
-    assert.strictEqual(await sp.$$eval('.chart circle[r="4"]', (n) => n.length), 3);
+    assert.strictEqual(await sp.$$eval('.chart circle[r="4"]', (n) => n.length), 3 + 2); // 내신 3주 + 모의평가 2회
+    assert.ok(trendText.includes('모의평가 회차별 점수'));
     assert.ok(trendText.includes('공개하지 않은 테스트 1개'));
 
     // 선생님
@@ -140,11 +143,21 @@ const { start } = require('./devserver');
     assert.deepStrictEqual(await tp.$$eval('thead th.wk', (n) => n.map((x) => x.textContent)), ['1주차', '2주차', '3주차', '4주차']);
     assert.ok((await tp.textContent('.note')).includes('공통 어휘 점검'));
     assert.ok((await tp.textContent('tr.avg')).includes('반 평균'));
+    assert.deepStrictEqual(await tp.$$eval('thead th.wk', (n) => n.map((x) => x.textContent)), ['1주차', '2주차', '3주차', '4주차']);
     await tp.screenshot({ path: 'shots/t3-report.png', fullPage: true });
     await tp.click('tr.stu:has-text("가상학생02")');
     await tp.waitForSelector('tr.detail .chart');
     await tp.screenshot({ path: 'shots/t4-report-detail.png', fullPage: true });
-    await tp.selectOption('select', '샘플고B');
+    // v1.4.0: 모의평가 따로 보기
+    await tp.selectOption('select[aria-label="종류"]', '모의평가');
+    await tp.waitForFunction(() => document.querySelector('.sub').textContent.startsWith('모의평가'));
+    assert.deepStrictEqual(await tp.$$eval('thead th.wk', (n) => n.map((x) => x.textContent)), ['1회', '2회']);
+    await tp.click('tr.stu:has-text("가상학생02")');
+    await tp.waitForSelector('tr.detail .chart');
+    await tp.screenshot({ path: 'shots/t5-report-mock.png', fullPage: true });
+    await tp.selectOption('select[aria-label="종류"]', '내신');
+    await tp.waitForFunction(() => document.querySelector('.sub').textContent.startsWith('내신'));
+    await tp.selectOption('select[aria-label="학교"]', '샘플고B');
     await tp.waitForFunction(() => document.querySelector('.sub').textContent.includes('샘플고B'));
     assert.deepStrictEqual(await tp.$$eval('tr.stu .name', (n) => n.map((x) => x.textContent.replace(/[▸▾]|\d학년/g, ''))), ['가상학생07', '가상학생08', '가상학생09']);
 
@@ -155,6 +168,40 @@ const { start } = require('./devserver');
     await mp.click('button[type=submit]');
     await mp.waitForSelector('section.set');
     await mp.screenshot({ path: 'shots/t2-today-phone.png', fullPage: true });
+
+    // v1.5.0 학부모: 처음 번호로 로그인 → 비밀번호 바꾸기 → 리포트 (자기 아이 것만)
+    const pctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, locale: 'ko-KR' });
+    const pp = await pctx.newPage(); watch(pp);
+    await pp.goto(url + '/parent.html');
+    await pp.waitForSelector('#school option[value="샘플고A"]', { state: 'attached' });
+    await pp.selectOption('#school', '샘플고A');
+    await pp.fill('#name', '가상학생01');
+    await pp.fill('#pw', 'demo1234'); // 학생 비밀번호로는 못 들어감
+    await pp.click('button[type=submit]');
+    await pp.waitForFunction(() => document.querySelector('.error').textContent.length > 0);
+    await pp.fill('#pw', DEMO_PARENT_CODE);
+    await pp.screenshot({ path: 'shots/p1-login.png' });
+    await pp.click('button[type=submit]');
+    await pp.waitForSelector('#np');
+    assert.ok((await pp.textContent('main')).includes('새 비밀번호 정하기'));
+    await pp.fill('#np', 'parent-new-01');
+    await pp.fill('#np2', 'parent-new-01');
+    await pp.screenshot({ path: 'shots/p2-changepw.png' });
+    await pp.click('button[type=submit]');
+    await pp.waitForSelector('.rec');
+    const ptext = await pp.textContent('main');
+    assert.ok(ptext.includes('가상학생01 학생 학습 리포트'));
+    assert.ok(ptext.includes('[가짜] 고전시가 확인 테스트'), '학생에게 비공개인 세트도 학부모에게는 보임');
+    assert.ok(ptext.includes('모의평가 회차별 점수') && ptext.includes('주차별 점수 (내신)'));
+    assert.ok(ptext.includes('반 평균'));
+    for (const other of ['가상학생02', '가상학생03', '가상학생04', '가상학생06', '가상학생07']) assert.ok(!ptext.includes(other), '다른 학생 이름이 보이면 안 됨: ' + other);
+    assert.strictEqual(await pp.locator('svg.chart').count(), 2);
+    await pp.screenshot({ path: 'shots/p3-report.png', fullPage: true });
+    // 새로고침해도 로그인 유지, 로그아웃하면 로그인 화면
+    await pp.reload();
+    await pp.waitForSelector('.rec');
+    await pp.click('text=로그아웃');
+    await pp.waitForSelector('#pw');
 
     assert.deepStrictEqual(errors, []);
     console.log('화면 테스트 통과');

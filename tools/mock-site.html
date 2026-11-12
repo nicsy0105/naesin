@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>[테스트용 가짜] 출석입력 화면</title>
+<!-- 맥가이7 출석입력 화면을 흉내 낸 테스트 페이지. 실제 사이트 아님. 가짜 자료만. -->
+<style>
+  body { font: 13px/1.5 "Malgun Gothic","Noto Sans CJK KR",sans-serif; margin: 16px; color:#222; }
+  .bar { background:#f3f3f3; border-top:2px solid #0a97d1; padding:10px; margin-bottom:10px; }
+  table { border-collapse: collapse; width: 1000px; }
+  th, td { border: 1px solid #ccc; padding: 6px 8px; vertical-align: middle; }
+  th { background:#f7f7f7; }
+  td.memo { width: 520px; }
+  tr.changed td { background: #fffbe6; }
+  #saved { margin-top: 10px; color: #0a7; font-weight: bold; white-space: pre-line; }
+  button { padding: 4px 12px; }
+</style>
+</head>
+<body>
+<div class="bar">[테스트용 가짜 화면] 일자 <input id="txt_yyyymmdd" value="2026-11-07"> <button onclick="fakeSave()">저장</button></div>
+<table id="tb_list1"><thead><tr><th>NO</th><th>이름</th><th>학교</th><th>학년</th><th>등원</th><th>하원</th><th>클리닉담당</th><th>평가</th></tr></thead><tbody></tbody></table>
+<div id="saved"></div>
+<script>
+var MY_M_NAME = "[가짜관] 선생님", MY_M_IDX = "1";
+var CUR_TAB_ID = "infotab_1";
+var T = function (school, week, total, unit, n) {
+  return "[" + school + " 내신 " + week + "주차 클리닉 안내] \n■ 과제수행도 \n- 자습서 : 상\n- 평가문제집 : 중\n\n■ 클리닉 테스트 결과 \n- 총 / " + total + "문항\n- " + unit + " :  / " + n + "\n- 개념 복습 테스트 : \n\n■ 클리닉 진행 사항 \n- 오늘은 가짜 단원 문제를 풀었습니다.\n";
+};
+var rows = [
+  { M_NAME: "가상학생01", M_SCHOOL: "샘플고A", M_GRADE_NAME: "고2", IN_TIME: "17:30", OUT_TIME: "19:00", CC_TEACHER_NAME: "[가짜관] 선생님", CC_TEACHER: "1", CC_MEMO: T("샘플고A", 4, 12, "고전시가", 12) },
+  { M_NAME: "가상학생02", M_SCHOOL: "샘플고A", M_GRADE_NAME: "고2", IN_TIME: "17:31", OUT_TIME: "19:00", CC_TEACHER_NAME: "", CC_TEACHER: "", CC_MEMO: T("샘플고A", 4, 12, "고전시가", 12) },
+  { M_NAME: "가상학생03", M_SCHOOL: "샘플고A", M_GRADE_NAME: "고2", IN_TIME: "17:32", OUT_TIME: "19:00", CC_TEACHER_NAME: "[가짜관] 선생님", CC_TEACHER: "1", CC_MEMO: T("샘플고A", 4, 12, "고전시가", 12).replace("- 총 / 12문항", "- 총 10 / 12문항") },
+  { M_NAME: "가상학생04", M_SCHOOL: "샘플고A", M_GRADE_NAME: "고2", IN_TIME: "17:33", OUT_TIME: "19:00", CC_TEACHER_NAME: "[가짜관] 선생님", CC_TEACHER: "1", CC_MEMO: T("샘플고A", 4, 15, "고전시가", 12) },
+  { M_NAME: "가상학생06", M_SCHOOL: "샘플고A", M_GRADE_NAME: "고2", IN_TIME: "17:34", OUT_TIME: "19:00", CC_TEACHER_NAME: "[가짜관] 선생님", CC_TEACHER: "1", CC_MEMO: T("샘플고A", 4, 12, "고전시가", 12) },
+  { M_NAME: "가상학생07", M_SCHOOL: "샘플고B", M_GRADE_NAME: "고1", IN_TIME: "18:00", OUT_TIME: "19:30", CC_TEACHER_NAME: "[가짜관] 선생님", CC_TEACHER: "1", CC_MEMO: T("샘플고B", 1, 10, "현대소설", 10) }
+];
+// 사이트의 데이터셋처럼 1번부터 시작하고 length를 가짐
+var dsLST1 = { length: rows.length };
+rows.forEach(function (r, i) { r.status = ""; r.IN_TIME_ORG = r.IN_TIME; r.OUT_TIME_ORG = r.OUT_TIME; dsLST1[i + 1] = r; });
+function render() {
+  var tb = document.querySelector('#tb_list1 tbody'); tb.innerHTML = '';
+  for (var i = 1; i <= dsLST1.length; i++) {
+    var r = dsLST1[i], tr = document.createElement('tr');
+    if (r.status) tr.className = 'changed';
+    [i, r.M_NAME, r.M_SCHOOL, r.M_GRADE_NAME, r.IN_TIME, r.OUT_TIME, r.CC_TEACHER_NAME].forEach(function (v) { var td = document.createElement('td'); td.textContent = v; tr.appendChild(td); });
+    var m = document.createElement('td'); m.className = 'memo'; m.innerHTML = String(r.CC_MEMO).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/\n/g, '<br>'); tr.appendChild(m);
+    tb.appendChild(tr);
+  }
+}
+// 사이트 jQuery 플러그인 흉내: SetNameValue, setRowStatus만
+window.jQuery = window.$ = function (sel) {
+  return {
+    length: document.querySelectorAll(sel).length,
+    SetNameValue: function (row, col, val) { dsLST1[row][col] = val; render(); },
+    setRowStatus: function (row, st) { dsLST1[row].status = st; render(); }
+  };
+};
+function tb_list1_exit(row, col, cname, value) {
+  if (cname == "CC_MEMO" && dsLST1[row]["CC_MEMO"] != "" && dsLST1[row]["CC_TEACHER"] == "") {
+    $("#tb_list1").SetNameValue(row, "CC_TEACHER_NAME", MY_M_NAME);
+    $("#tb_list1").SetNameValue(row, "CC_TEACHER", MY_M_IDX);
+  }
+}
+// 사이트 fn_Save 흉내: 바뀐 줄(status != "") 중 담당 선생님이 있는 줄만 저장 목록에
+function fakeSave() {
+  var list = [];
+  for (var i = 1; i <= dsLST1.length; i++) {
+    if (dsLST1[i].status == "") continue;
+    if (dsLST1[i]["CC_TEACHER"] != "") list.push(dsLST1[i].M_NAME);
+  }
+  document.getElementById('saved').textContent = list.length ? '저장될 학생: ' + list.join(', ') : '변경사항이 없습니다.';
+}
+render();
+</script>
+</body>
+</html>
