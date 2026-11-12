@@ -1,18 +1,20 @@
 /*
- * 내신 클리닉 — '평가 채우기' 버튼 (v1.1.0)
+ * 내신 클리닉 — '평가 채우기' 버튼 (v1.2.0)
  * 맥가이7 [클리닉수업관리 → 출석입력] 화면에서 즐겨찾기 버튼으로 불러 씁니다.
  *
  * 하는 일: 학생마다 '평가' 칸에 있는 틀의 빈 점수만 채움
  *   "- 총 / 30문항"   → "- 총 25 / 30문항"
  *   "- 품사 :  / 30"  → "- 품사 : 25 / 30"   (문항 탭의 '단원' 이름과 같은 줄만)
  *   (v1.1.0) 학부모 비밀번호를 만든 학생은 맨 끝에 '■ 성적 리포트' 링크 줄을 한 번만 붙임
+ *   (v1.2.0) 서답형이 있는 세트: "- 객관식 : / 80", "- 서답형 : / 20", "- 합계 : / 100" 줄 (만점이 같을 때만,
+ *            서답형·합계는 서답형 탭을 다 채운 뒤에만)
  * 하지 않는 일: 이미 숫자가 있는 줄, 앱에 없는 줄(자습서·평가문제집 등)은 건드리지 않음.
  *              [저장]·[문자보내기]는 누르지 않음. 선생님이 확인하고 직접 누름.
  * 학생 정보는 이 파일에 없습니다. 선생님 비밀번호로 서버에서 그날 점수만 받아 옵니다.
  */
 (function () {
   'use strict';
-  var VERSION = '1.1.0';
+  var VERSION = '1.2.0';
   var TOKEN_KEY = 'naesin.fill.token';
   var PANEL_ID = 'naesin-fill-panel';
 
@@ -123,6 +125,23 @@
         return '- ' + u.unit + ' : ' + u.correct + ' / ' + den;
       });
     });
+    // v1.2.0 서답형 세트: 객관식·서답형·합계 줄
+    var es = r.essays || [];
+    if (es.length === 1) {
+      var e = es[0];
+      [['객관식', e.mcq, e.mcqMax, true], ['서답형', e.essay, e.essayMax, e.done], ['합계', e.total, 100, e.done], ['총점', e.total, 100, e.done]].forEach(function (x) {
+        var re = new RegExp('-[ \\t]*' + x[0] + '[ \\t]*:[ \\t]*(\\d+(?:\\.\\d+)?)?[ \\t]*\\/[ \\t]*(\\d+(?:\\.\\d+)?)');
+        out = out.replace(re, function (m, cur, den) {
+          if (cur) { skipped.push(x[0] + ': 이미 숫자가 있음'); return m; }
+          if (Number(den) !== Number(x[2])) { skipped.push(x[0] + ': 틀은 ' + den + '점, 앱은 ' + x[2] + '점 만점이라 비워 둠'); return m; }
+          if (!x[3]) { skipped.push(x[0] + ': 서답형 채점 전'); return m; }
+          filled.push(x[0] + ' ' + x[1] + '/' + den);
+          return '- ' + x[0] + ' : ' + x[1] + ' / ' + den;
+        });
+      });
+    } else if (es.length > 1 && /-[ \t]*(객관식|서답형|합계|총점)[ \t]*:/.test(out)) {
+      skipped.push('서답형 시험이 같은 날 ' + es.length + '개라 객관식·서답형·합계 줄은 비워 둠');
+    }
     return { memo: out, changed: out !== memo, filled: filled, skipped: skipped };
   }
 

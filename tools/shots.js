@@ -35,7 +35,7 @@ const { start, DEMO_PARENT_CODE } = require('./devserver');
     await page.screenshot({ path: 'shots/s3-home.png' });
     const titles = await page.$$eval('.set-title', (n) => n.map((x) => x.textContent));
     assert.deepStrictEqual(titles.sort(), ['[가짜] 1주차 고전시가 점검', '[가짜] 2주차 고전시가 점검', '[가짜] 3주차 고전시가 점검', '[가짜] 고전시가 확인 테스트', '[가짜] 공통 어휘 점검',
-      '[가짜] 샘플고A 2학기 기출 모의평가 1회', '[가짜] 샘플고A 2학기 기출 모의평가 2회', '[가짜] 샘플고A 2학기 기출 모의평가 3회']);
+      '[가짜] 샘플고A 2학기 기출 모의평가 1회', '[가짜] 샘플고A 2학기 기출 모의평가 2회', '[가짜] 샘플고A 2학기 기출 모의평가 3회', '[가짜] 샘플고A 기말 3회 모의평가 (서답형 포함)']);
     assert.ok((await page.textContent('#app')).includes('풀 수 있는 모의평가'));
 
     await page.click('.set:has-text("고전시가 확인 테스트") button');
@@ -116,7 +116,7 @@ const { start, DEMO_PARENT_CODE } = require('./devserver');
     assert.ok(!trendText.includes('가상학생01'), '다른 학생 이름이 보이면 안 됨');
     assert.strictEqual(await sp.$$eval('.chart circle[r="4"]', (n) => n.length), 3 + 2); // 내신 3주 + 모의평가 2회
     assert.ok(trendText.includes('모의평가 회차별 점수'));
-    assert.ok(trendText.includes('공개하지 않은 테스트 1개'));
+    assert.ok(trendText.includes('공개하지 않은 테스트 2개'), '서답형 세트도 학생에게는 비공개 (v1.6.0)');
 
     // 선생님
     const tctx = await browser.newContext({ viewport: { width: 1280, height: 900 }, deviceScaleFactor: 1.5, locale: 'ko-KR' });
@@ -137,6 +137,19 @@ const { start, DEMO_PARENT_CODE } = require('./devserver');
     assert.ok((await tp.textContent('section.set:first-of-type .missing')).includes('가상학생06'));
     assert.ok((await tp.textContent('.warn')).includes('정답 빠진 세트'));
 
+    // v1.6.0: 서답형이 있는 세트 (어제 날짜)
+    await tp.fill('input[aria-label="날짜"]', '2026-11-06');
+    await tp.dispatchEvent('input[aria-label="날짜"]', 'change');
+    await tp.waitForFunction(() => (document.querySelector('section.set h2') || {}).textContent === '[가짜] 샘플고A 기말 3회 모의평가 (서답형 포함)');
+    const essHead = await tp.textContent('section.set .set-head');
+    assert.ok(essHead.includes('객관식 80 + 서답형 20점') && essHead.includes('서답형 채점 3/4명') && essHead.includes('학생에게 점수 비공개'), essHead);
+    assert.deepStrictEqual(await tp.$$eval('section.set thead th', (n) => n.map((x) => x.textContent).slice(2, 5)), ['객관식', '서답형', '합계']);
+    const essRows = await tp.$$eval('section.set tbody tr', (n) => n.map((x) => x.textContent));
+    assert.ok(essRows[0].startsWith('가상학생01') && essRows[0].includes('72.5/80') && essRows[0].includes('18.5/20') && essRows[0].includes('91'), essRows[0]);
+    assert.ok(essRows[3].startsWith('가상학생04') && essRows[3].includes('확인 필요'), essRows[3]);
+    assert.ok((await tp.textContent('section.set .warn')).includes('가상학생04'));
+    await tp.screenshot({ path: 'shots/t6-today-essay.png', fullPage: true });
+
     // v1.1.0: 누적 리포트
     await tp.click('a:has-text("누적 리포트")');
     await tp.waitForSelector('tr.stu');
@@ -151,7 +164,8 @@ const { start, DEMO_PARENT_CODE } = require('./devserver');
     // v1.4.0: 모의평가 따로 보기
     await tp.selectOption('select[aria-label="종류"]', '모의평가');
     await tp.waitForFunction(() => document.querySelector('.sub').textContent.startsWith('모의평가'));
-    assert.deepStrictEqual(await tp.$$eval('thead th.wk', (n) => n.map((x) => x.textContent)), ['1회', '2회']);
+    assert.deepStrictEqual(await tp.$$eval('thead th.wk', (n) => n.map((x) => x.textContent)), ['1회', '2회', '3회']);
+    assert.ok((await tp.textContent('.note')).includes('서답형 채점 전') && (await tp.textContent('.note')).includes('(서답형 포함) 1명'));
     await tp.click('tr.stu:has-text("가상학생02")');
     await tp.waitForSelector('tr.detail .chart');
     await tp.screenshot({ path: 'shots/t5-report-mock.png', fullPage: true });
@@ -196,6 +210,8 @@ const { start, DEMO_PARENT_CODE } = require('./devserver');
     assert.ok(ptext.includes('반 평균'));
     for (const other of ['가상학생02', '가상학생03', '가상학생04', '가상학생06', '가상학생07']) assert.ok(!ptext.includes(other), '다른 학생 이름이 보이면 안 됨: ' + other);
     assert.strictEqual(await pp.locator('svg.chart').count(), 2);
+    assert.ok(ptext.includes('객관식 72.5/80 · 서답형 18.5/20'), 'v1.6.0 서답형 합산');
+    assert.ok(ptext.includes('91점'));
     await pp.screenshot({ path: 'shots/p3-report.png', fullPage: true });
     // 새로고침해도 로그인 유지, 로그아웃하면 로그인 화면
     await pp.reload();

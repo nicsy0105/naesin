@@ -86,6 +86,26 @@ function makeDemo() {
     });
   });
 
+  // v1.6.0: 서답형이 있는 모의평가 (가짜). 객관식 21문항 80점 + 서답형 5문항 20점(4점씩)
+  const essPts = [3.3, 3.3, 3.8, 3.8, 3.5, 3.2, 3.9, 3.9, 4.1, 4, 3.9, 4, 3.9, 4, 3.8, 3.9, 3.8, 4.1, 4, 3.9, 3.9];
+  const essKeys = essPts.map((p, i) => ((i * 2 + 1) % 5) + 1);
+  setSheet.addRow({ 세트ID: 'DEMO-A-ESSAY', 세트이름: '[가짜] 샘플고A 기말 3회 모의평가 (서답형 포함)', 학교: '샘플고A', 학년: '2', 사용: 'Y', 주차: 3, 결과공개: '', 종류: '모의평가', 서답형배점: '4,4,4,4,4' });
+  essPts.forEach((p, i) => g.sheet('문항').addRow({ 세트ID: 'DEMO-A-ESSAY', 번호: i + 1, 정답: String(essKeys[i]), 배점: p, 단원: i < 15 ? '문법' : '문학', 세부항목: i < 15 ? ['음운 변동', '한글 맞춤법', '띄어쓰기'][i % 3] : ['표현상 특징', '서사 내용 이해'][i % 2] }));
+  at('2026-11-06T18:00:00+09:00');
+  const essSkill = { 가상학생01: 0.9, 가상학생02: 0.62, 가상학생03: 0.75, 가상학생04: 0.55 };
+  Object.entries(essSkill).forEach(([name, p]) => {
+    const answers = {};
+    essKeys.forEach((k, i) => { answers[i + 1] = [rand() < p ? k : (k % 5) + 1]; });
+    submit('샘플고A', name, 'DEMO-A-ESSAY', answers);
+  });
+  g.ctx.makeEssayRows_([setSheet.objects().find((x) => x.세트ID === 'DEMO-A-ESSAY')._row]);
+  const essSheet = g.sheet('서답형');
+  const essScores = { 가상학생01: [4, 3.5, 4, 3, 4], 가상학생02: [2, 1.5, 3, 0, 2], 가상학생03: [3, 4, 2.5, 3, 4], 가상학생04: [3, 5, 2, '', ''] }; // 04: 5점은 만점(4) 초과 → 확인 필요
+  Object.entries(essScores).forEach(([name, sc]) => {
+    const row = essSheet.objects().find((x) => x.이름 === name)._row;
+    sc.forEach((v, i) => essSheet.setCell(row, essSheet.data[0].indexOf('서답형' + (i + 1)) + 1, v));
+  });
+
   // 오늘(4주차) 제출
   at('2026-11-07T17:40:00+09:00');
   const key = { 1: [3], 2: [2, 4], 3: [1], 4: [5], 5: [4], 6: [2], 7: [1, 3], 8: [3], 9: [5], 10: [2], 11: [4], 12: [1] };

@@ -22,11 +22,12 @@ function teacherReady(g, pw = 'teach123') {
 
 /* ── 시트 준비 ── */
 
-test('시트 탭 만들기: 6개 탭과 칸 이름이 생긴다', () => {
+test('시트 탭 만들기: 7개 탭과 칸 이름이 생긴다 (v1.6.0: 서답형 탭 추가)', () => {
   const g = loadGas();
   g.ctx.setupSheets_();
   const names = g.ss.getSheets().map((s) => s.getName());
-  assert.deepStrictEqual(names, ['학생', '세트', '문항', '제출', '숙제검사', '설정']);
+  assert.deepStrictEqual(names, ['학생', '세트', '문항', '제출', '서답형', '숙제검사', '설정']);
+  assert.deepStrictEqual(g.sheet('서답형').data[0], ['세트ID', '학생ID', '이름', '학교', '객관식', '서답형1', '서답형2', '서답형3', '서답형4', '서답형5', '서답형합계', '합계', '메모']);
   assert.deepStrictEqual(g.sheet('문항').data[0], ['세트ID', '번호', '정답', '배점', '단원', '세부항목', '메모']);
 });
 
@@ -786,6 +787,170 @@ test('학부모 칸이 없는 예전 시트: 학부모 로그인은 안내, 다�
   const t = studentReady(g, '샘플고A', '가상학생01');
   ok(g.call('submit', { token: t, setId: 'DEMO-A-1', answers: KEY_A }));
   assert.strictEqual(ok(g.call('teacherEval', { token: teacherReady(g) })).students[0].parent, false);
+});
+
+/* ── 서답형 합산 (v1.6.0) ── */
+
+// 객관식 4문항(각 20점, 합 80) + 서답형 5문항(각 4점, 합 20). 결과공개 Y여도 학생에게는 비공개여야 함
+function addEssaySet(g, extra) {
+  g.sheet('세트').addRow(Object.assign({ 세트ID: 'ESS 1', 세트이름: '[가짜] 서답형 포함 모의평가', 학교: '샘플고A', 사용: 'Y', 주차: 1, 결과공개: 'Y', 종류: '모의평가', 서답형배점: '4,4,4,4,4' }, extra || {}));
+  [1, 2, 3, 4].forEach((k) => g.sheet('문항').addRow({ 세트ID: 'ESS 1', 번호: k, 정답: String(k), 배점: 20, 단원: '문법', 세부항목: '음운 변동' }));
+}
+const ESS_KEY = { 1: [1], 2: [2], 3: [3], 4: [4] };
+function essayRowsFor(g) { return g.sheet('서답형').objects().filter((x) => x.세트ID); }
+function setEssay(g, name, scores) {
+  const sh = g.sheet('서답형');
+  const row = sh.objects().find((x) => x.이름 === name);
+  scores.forEach((v, i) => sh.setCell(row._row, sh.data[0].indexOf('서답형' + (i + 1)) + 1, v));
+}
+function setRowOf(g, id) { return g.sheet('세트').objects().find((x) => x.세트ID === id)._row; }
+
+test('서답형배점 읽기', () => {
+  const g = fresh();
+  const p = g.ctx.parseEssayPoints_;
+  assert.strictEqual(p(''), null);
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(p('4,4,4,4,4'))), { points: [4, 4, 4, 4, 4], max: 20 });
+  assert.strictEqual(p('4.6, 3.1, 4.6, 4.6, 3.1').max, 20);
+  assert.strictEqual(p('20').max, 20);
+  assert.ok(p(44444).error, '쉼표가 사라져 숫자가 된 경우');
+  assert.ok(p('4,-1').error);
+  assert.ok(p('4,abc').error);
+  assert.ok(p('60,40').error, '합계 100 이상');
+});
+
+test('서답형 세트: 결과공개 Y여도 학생에게는 점수 비공개, 다른 세트는 그대로', () => {
+  const g = fresh();
+  addEssaySet(g);
+  const t = studentReady(g, '샘플고A', '가상학생01');
+  const r = ok(g.call('submit', { token: t, setId: 'ESS 1', answers: ESS_KEY }));
+  assert.strictEqual(r.revealed, false);
+  assert.ok(!('result' in r) || r.result == null);
+  const home = ok(g.call('studentHome', { token: t }));
+  const e = home.sets.find((x) => x.setId === 'ESS1');
+  assert.deepStrictEqual([e.revealed, e.score], [false, null]);
+  const pub = ok(g.call('submit', { token: t, setId: 'DEMO-A-1', answers: KEY_A }));
+  assert.strictEqual(pub.result.score, 100, '서답형 없는 세트는 예전처럼 공개');
+  const tr = ok(g.call('myTrend', { token: t }));
+  assert.ok(!JSON.stringify(tr.mock).includes('ESS'), '학생 성적 추이에도 안 들어감');
+});
+
+test('서답형 입력표 만들기: 제출한 학생 줄과 객관식 점수, 다시 눌러도 중복 없음·적은 점수 그대로', () => {
+  const g = fresh({ now: '2026-11-12T18:00:00+09:00' });
+  addEssaySet(g);
+  ok(g.call('submit', { token: studentReady(g, '샘플고A', '가상학생01'), setId: 'ESS 1', answers: ESS_KEY }));                       // 80
+  ok(g.call('submit', { token: studentReady(g, '샘플고A', '가상학생02'), setId: 'ESS 1', answers: { 1: [1], 2: [2], 3: [5], 4: [] } })); // 40
+  const res = g.ctx.makeEssayRows_([setRowOf(g, 'ESS 1')]);
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(res)), [{ title: '[가짜] 서답형 포함 모의평가', added: 2, kept: 0, count: 5, max: 20, mcqMax: 80 }]);
+  let rows = essayRowsFor(g);
+  assert.deepStrictEqual(rows.map((x) => [x.세트ID, x.이름, x.학교, x.객관식]).sort(), [['ESS 1', '가상학생01', '샘플고A', 80], ['ESS 1', '가상학생02', '샘플고A', 40]]);
+  const sh = g.sheet('서답형');
+  const f = Object.values(sh.formulas);
+  assert.ok(f.some((x) => /^=IF\(COUNT\(F\d,G\d,H\d,I\d,J\d\)<5,"",ROUND\(E\d\+SUM/.test(x)), '합계 수식: ' + f.join(' | '));
+  setEssay(g, '가상학생01', [4, 3, 4, 2, 4]);
+  ok(g.call('submit', { token: studentReady(g, '샘플고A', '가상학생03'), setId: 'ESS 1', answers: ESS_KEY }));
+  const again = g.ctx.makeEssayRows_([setRowOf(g, 'ESS 1')]);
+  assert.deepStrictEqual([again[0].added, again[0].kept], [1, 2]);
+  rows = essayRowsFor(g);
+  assert.strictEqual(rows.length, 3);
+  assert.strictEqual(rows.find((x) => x.이름 === '가상학생01').서답형2, 3, '적어 둔 점수는 그대로');
+  const none = g.ctx.makeEssayRows_([setRowOf(g, 'DEMO-A-1')]);
+  assert.ok(none[0].error.includes('서답형배점'));
+});
+
+test('서답형 합계: 다 채우면 객관식+서답형, 덜 채웠거나 만점보다 크면 채점 전', () => {
+  const g = fresh({ now: '2026-11-12T18:00:00+09:00' });
+  addEssaySet(g);
+  ['가상학생01', '가상학생02', '가상학생03', '가상학생04'].forEach((n, i) => {
+    const answers = [ESS_KEY, { 1: [1], 2: [2], 3: [5], 4: [] }, { 1: [1], 2: [2], 3: [3], 4: [1] }, ESS_KEY][i];
+    ok(g.call('submit', { token: studentReady(g, '샘플고A', n), setId: 'ESS 1', answers }));
+  });
+  g.ctx.makeEssayRows_([setRowOf(g, 'ESS 1')]);
+  setEssay(g, '가상학생01', [4, 3, 4, 2, 4]);      // 17 → 97
+  setEssay(g, '가상학생02', [2, 0, 1.5, 0, 4]);    // 7.5 → 47.5
+  setEssay(g, '가상학생03', [4, 4, '', 4, 4]);     // 비어 있음 → 채점 전
+  setEssay(g, '가상학생04', [4, 6, 4, 4, 4]);      // 6 > 4 → 확인 필요
+  const tt = teacherReady(g);
+  const today = ok(g.call('teacherToday', { token: tt }));
+  const set = today.sets.find((x) => x.setId === 'ESS1');
+  assert.strictEqual(set.reveal, false);
+  const by = Object.fromEntries(set.rows.map((x) => [x.name, x.essay]));
+  assert.deepStrictEqual([by.가상학생01.mcq, by.가상학생01.essay, by.가상학생01.total, by.가상학생01.done], [80, 17, 97, true]);
+  assert.deepStrictEqual([by.가상학생02.total, by.가상학생03.done, by.가상학생03.total], [47.5, false, null]);
+  assert.deepStrictEqual([by.가상학생04.done, by.가상학생04.bad], [false, [2]]);
+  assert.deepStrictEqual(set.rows.map((x) => x.name), ['가상학생01', '가상학생02', '가상학생04', '가상학생03'], '합계 난 학생 먼저, 그다음 객관식 순');
+  assert.deepStrictEqual([set.essay.max, set.essay.mcqMax, set.essay.graded, set.essay.totalAvg, set.essay.bad], [20, 80, 2, 72.3, ['가상학생04']]);
+  assert.strictEqual(set.essay.mcqAvg, 65);
+
+  const ev = ok(g.call('teacherEval', { token: tt }));
+  const e1 = ev.students.find((x) => x.name === '가상학생01').essays[0];
+  assert.deepStrictEqual([e1.mcq, e1.mcqMax, e1.essay, e1.essayMax, e1.total, e1.done], [80, 80, 17, 20, 97, true]);
+  assert.strictEqual(ev.students.find((x) => x.name === '가상학생03').essays[0].done, false);
+
+  const trend = ok(g.call('teacherTrend', { token: tt, school: '샘플고A', kind: '모의평가' }));
+  const w = (n) => (trend.students.find((x) => x.name === n).weeks[1] || {}).score;
+  assert.deepStrictEqual([w('가상학생01'), w('가상학생02'), w('가상학생03'), w('가상학생04')], [97, 47.5, undefined, undefined]);
+  assert.deepStrictEqual(trend.pendingEssay.map((x) => [x.title, x.n]), [['[가짜] 서답형 포함 모의평가', 2]]);
+  assert.ok(trend.students.find((x) => x.name === '가상학생03').tags.length, '채점 전이어도 세부항목은 객관식으로 집계');
+});
+
+test('학부모 리포트: 서답형 세트는 합계, 채점 전이면 표시만 하고 추세·반 평균에서 뺌', () => {
+  const g = fresh({ now: '2026-11-12T18:00:00+09:00' });
+  addEssaySet(g);
+  ['가상학생01', '가상학생02', '가상학생03'].forEach((n) => ok(g.call('submit', { token: studentReady(g, '샘플고A', n), setId: 'ESS 1', answers: ESS_KEY })));
+  g.ctx.makeEssayRows_([setRowOf(g, 'ESS 1')]);
+  const codes = parentCodes(g, ['가상학생01']);
+  const tp = parentReady(g, '샘플고A', '가상학생01', codes['가상학생01']);
+  let r = ok(g.call('parentReport', { token: tp }));
+  let a = r.recent[0];
+  assert.deepStrictEqual([a.score, a.essay.mcq, a.essay.mcqMax, a.essay.done, a.classAvg], [null, 80, 80, false, null]);
+  assert.deepStrictEqual(r.mock.weeks, [], '채점 전이면 회차 점수에 안 들어감');
+  assert.ok(r.tags.length, '세부항목은 들어감');
+  setEssay(g, '가상학생01', [4, 4, 4, 4, 4]);
+  setEssay(g, '가상학생02', [2, 2, 2, 2, 2]);
+  r = ok(g.call('parentReport', { token: tp }));
+  a = r.recent[0];
+  assert.deepStrictEqual([a.score, a.essay.essay, a.essay.done, a.classAvg], [100, 20, true, null], '채점된 학생이 2명이면 반 평균 숨김');
+  setEssay(g, '가상학생03', [0, 0, 0, 0, 0]);
+  r = ok(g.call('parentReport', { token: tp }));
+  a = r.recent[0];
+  assert.deepStrictEqual([a.score, a.classAvg, a.classN], [100, 90, 3]);
+  assert.deepStrictEqual(r.mock.weeks.map((x) => [x.label, x.score, x.classAvg]), [['1회', 100, 90]]);
+  assert.ok(!JSON.stringify(r).includes('가상학생02'));
+});
+
+test('서답형 탭에 학생ID 없이 이름·학교만 적어도 맞춰짐', () => {
+  const g = fresh();
+  addEssaySet(g);
+  ok(g.call('submit', { token: studentReady(g, '샘플고A', '가상학생01'), setId: 'ESS 1', answers: ESS_KEY }));
+  g.ctx.setupSheets_();
+  g.sheet('서답형').addRow({ 세트ID: 'ESS 1', 이름: '가상학생01', 학교: '샘플고A', 서답형1: 1, 서답형2: 1, 서답형3: 1, 서답형4: 1, 서답형5: 1 });
+  const today = ok(g.call('teacherToday', { token: teacherReady(g) }));
+  assert.strictEqual(today.sets.find((x) => x.setId === 'ESS1').rows[0].essay.total, 85);
+});
+
+test('서답형배점이 잘못되면 학생에게 안 보이고 선생님 화면에 안내', () => {
+  const g = fresh();
+  addEssaySet(g, { 서답형배점: '60,50' });
+  const home = ok(g.call('studentHome', { token: studentReady(g, '샘플고A', '가상학생01') }));
+  assert.ok(!home.sets.some((x) => x.setId === 'ESS1'));
+  const today = ok(g.call('teacherToday', { token: teacherReady(g) }));
+  assert.ok(today.warnings.some((x) => x.setId === 'ESS1' && x.problem.includes('서답형배점')));
+});
+
+test('서답형 탭이 없는 예전 시트에서도 다른 기능은 그대로', () => {
+  const g = fresh();
+  g.ss.deleteSheet(g.sheet('서답형'));
+  const t = studentReady(g, '샘플고A', '가상학생01');
+  ok(g.call('submit', { token: t, setId: 'DEMO-A-1', answers: KEY_A }));
+  const tt = teacherReady(g);
+  ok(g.call('teacherToday', { token: tt }));
+  ok(g.call('teacherTrend', { token: tt, school: '샘플고A' }));
+  ok(g.call('teacherEval', { token: tt }));
+  addEssaySet(g);
+  ok(g.call('submit', { token: t, setId: 'ESS 1', answers: ESS_KEY }));
+  const res = g.ctx.makeEssayRows_([setRowOf(g, 'ESS 1')]);
+  assert.strictEqual(res[0].added, 1, '메뉴가 서답형 탭을 만듦');
+  assert.ok(g.sheet('서답형'));
 });
 
 /* ── 실행 ── */

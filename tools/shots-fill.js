@@ -67,6 +67,23 @@ const { start } = require('./devserver');
     const again = await p.evaluate(() => [dsLST1[1].CC_MEMO, dsLST1[2].CC_MEMO]);
     assert.deepStrictEqual(again, [m(0), m(1)], '링크 줄은 두 번 들어가지 않음');
 
+    // v1.2.0: 서답형이 있는 모의평가 (2026-11-06) — 객관식·서답형·합계 줄
+    await p.evaluate(() => {
+      document.getElementById('txt_yyyymmdd').value = '2026-11-06';
+      const T = '[샘플고A 기말 모의평가 결과]\n■ 모의평가 결과\n- 총 / 21문항\n- 문법 :  / 15\n- 문학 :  / 6\n- 객관식 :  / 80\n- 서답형 :  / 20\n- 합계 :  / 100\n';
+      for (let i = 1; i <= dsLST1.length; i++) { dsLST1[i].CC_MEMO = T; dsLST1[i].status = ''; }
+      render();
+    });
+    await p.evaluate(code);
+    await p.waitForFunction(() => ((document.getElementById('naesin-fill-panel') || {}).textContent || '').includes('채움 ('));
+    await p.screenshot({ path: 'shots/f3-filled-essay.png', fullPage: true });
+    const em = await p.evaluate(() => Array.from({ length: dsLST1.length }, (_, i) => dsLST1[i + 1].CC_MEMO));
+    assert.ok(em[0].includes('- 객관식 : 72.5 / 80') && em[0].includes('- 서답형 : 18.5 / 20') && em[0].includes('- 합계 : 91 / 100'), em[0]);
+    assert.ok(/- 총 \d+ \/ 21문항/.test(em[0]) && /- 문법 : \d+ \/ 15/.test(em[0]) && /- 문학 : \d+ \/ 6/.test(em[0]), em[0]);
+    assert.ok(em[0].endsWith(LINK) && em[1].endsWith(LINK), '리포트 링크 줄도 그대로 동작');
+    assert.ok(em[3].includes('- 객관식 : 34.7 / 80') && em[3].includes('- 서답형 :  / 20') && em[3].includes('- 합계 :  / 100'), '서답형 채점 전이면 서답형·합계는 비워 둠: ' + em[3]);
+    assert.ok((await p.textContent('#naesin-fill-panel')).includes('서답형 채점 전'));
+
     // 다른 화면에서 누르면 안내만
     await p.goto(url + '/teacher.html');
     await p.evaluate(code);

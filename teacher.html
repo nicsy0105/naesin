@@ -76,6 +76,10 @@
   .wn { display: inline-block; min-width: 26px; padding: 1px 6px; margin: 0 4px 4px 0; border-radius: 12px; border: 1px solid #f1c4cb; color: var(--omr); font-size: 13px; font-weight: 700; text-align: center; font-variant-numeric: tabular-nums; }
   .wn.blank { border-style: dashed; color: var(--muted); border-color: #c9c5bc; }
   .muted { color: var(--muted); }
+  /* v1.4.0 서답형 합산 */
+  .pend { font-size: 13px; color: var(--muted); font-weight: 600; }
+  .pend.bad { color: var(--omr); }
+  td .of { color: var(--muted); font-size: 12px; font-weight: 600; margin-left: 1px; }
 
   .missing { margin-top: 16px; font-size: 14px; }
   .missing .names { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
@@ -101,7 +105,7 @@
 <body>
 <div id="app"></div>
 <script>
-const APP_VERSION = '1.3.0';
+const APP_VERSION = '1.4.0';
 const KEY = 'naesin.teacher';
 const $app = document.getElementById('app');
 let timer = null;
@@ -233,10 +237,21 @@ function renderSet(x) {
       x.school ? el('span', { class: 'tag' }, x.school) : el('span', { class: 'tag' }, '공통'),
       el('span', { class: 'tag' }, `제출 ${x.submitted}명`),
       x.reveal === false ? el('span', { class: 'tag' }, '학생에게 점수 비공개') : x.reveal === true ? el('span', { class: 'tag' }, '학생에게 점수 공개') : null,
+      x.essay ? el('span', { class: 'tag' }, `객관식 ${fmt(x.essay.mcqMax)} + 서답형 ${fmt(x.essay.max)}점`) : null,
+      x.essay ? el('span', { class: 'tag' + (x.essay.graded < x.submitted ? ' alert' : '') }, `서답형 채점 ${x.essay.graded}/${x.submitted}명`) : null,
       x.missing && x.missing.length ? el('span', { class: 'tag alert' }, `미제출 ${x.missing.length}명`) : null),
-    el('div', { class: 'stats' },
+    x.essay ? el('div', { class: 'stats' },
+      stat('객관식 평균', fmt(x.essay.mcqAvg), `/ ${fmt(x.essay.mcqMax)}점`),
+      stat('합계 평균', fmt(x.essay.totalAvg), '점'),
+      stat('합계 최고 · 최저', x.essay.totalMax == null ? '–' : `${fmt(x.essay.totalMax)} · ${fmt(x.essay.totalMin)}`, '점'),
+      stat('객관식 문항', String(x.itemRates.length || (x.rows[0] && x.rows[0].count) || '–'), '문항'))
+    : el('div', { class: 'stats' },
       stat('평균', fmt(x.avg), '점'), stat('최고', fmt(x.max), '점'), stat('최저', fmt(x.min), '점'),
       stat('문항 수', String(x.itemRates.length || (x.rows[0] && x.rows[0].count) || '–'), '문항')),
+    x.essay && x.essay.bad.length ? el('div', { class: 'warn', style: 'margin:0 0 14px' }, el('b', {}, '서답형 점수 확인: '),
+      `${x.essay.bad.join(', ')} — 그 문항 만점보다 크거나 숫자가 아닌 칸이 있어요. 서답형 탭에서 고쳐 주세요.`) : null,
+    x.essay && x.essay.graded < x.submitted ? el('p', { class: 'weak', style: 'margin:0 0 12px' },
+      '서답형 점수는 시트 [서답형] 탭에 적어요. 세트 탭에서 이 세트 행을 고르고 메뉴 [내신 관리 → 선택한 세트 서답형 입력표 만들기]를 누르면 학생 줄이 생겨요. 서답형 칸을 다 채운 학생만 합계가 나와요.') : null,
     x.itemRates.length ? el('div', {},
       el('div', { class: 'label' }, '문항별 정답률'),
       el('div', { class: 'rates' }, x.itemRates.map((it) => el('div', {
@@ -248,13 +263,20 @@ function renderSet(x) {
     ) : null,
     el('table', {},
       el('thead', {}, el('tr', {},
-        el('th', {}, '이름'), el('th', { class: 'hide-sm' }, '학교'), el('th', { class: 'num' }, '점수'),
+        el('th', {}, '이름'), el('th', { class: 'hide-sm' }, '학교'),
+        x.essay ? [el('th', { class: 'num' }, '객관식'), el('th', { class: 'num' }, '서답형'), el('th', { class: 'num' }, '합계')] : el('th', { class: 'num' }, '점수'),
         el('th', { class: 'num' }, '맞은 수'), el('th', {}, '틀린 문항 ', el('span', { style: 'font-weight:500' }, '(점선 = 비움)')), el('th', { class: 'num' }, '제출'))),
       el('tbody', {}, x.rows.map((r) => {
         const blank = new Set(r.blank);
+        const e = r.essay;
         return el('tr', {},
           el('td', {}, r.name), el('td', { class: 'hide-sm muted' }, r.school),
-          el('td', { class: 'num score' }, fmt(r.score)),
+          e ? [
+            el('td', { class: 'num' }, fmt(e.mcq), el('span', { class: 'of' }, `/${fmt(e.mcqMax)}`)),
+            el('td', { class: 'num' }, e.done ? [fmt(e.essay), el('span', { class: 'of' }, `/${fmt(e.essayMax)}`)]
+              : e.bad.length ? el('span', { class: 'pend bad' }, '확인 필요') : el('span', { class: 'pend' }, '채점 전')),
+            el('td', { class: 'num score' }, e.done ? fmt(e.total) : el('span', { class: 'pend' }, '–'))
+          ] : el('td', { class: 'num score' }, fmt(r.score)),
           el('td', { class: 'num' }, `${r.correct}/${r.count}`),
           el('td', {}, r.wrong.length ? r.wrong.map((no) => el('span', { class: 'wn' + (blank.has(no) ? ' blank' : ''), title: blank.has(no) ? '비움' : '' }, String(no))) : el('span', { class: 'muted' }, '없음')),
           el('td', { class: 'num muted' }, r.time));

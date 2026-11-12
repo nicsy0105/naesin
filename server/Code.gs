@@ -6,7 +6,7 @@
  *
  * 서버 파일을 고칠 때마다 아래 버전 번호를 올립니다.
  */
-const SERVER_VERSION = '1.5.0';
+const SERVER_VERSION = '1.6.0';
 
 const CONFIG = {
   TZ: 'Asia/Seoul',
@@ -43,8 +43,8 @@ const SHEET_DEFS = {
   sets: {
     name: '세트',
     headers: ['세트ID', '세트이름', '학교', '선지수', '사용', '메모'],
-    extra: ['주차', '결과공개', '종류', '학년'], // 주차: v1.1.0, 결과공개: v1.2.0, 종류·학년: v1.4.0. 칸이 없어도 동작
-    text: ['세트ID', '세트이름', '학교', '사용', '종류', '학년'],
+    extra: ['주차', '결과공개', '종류', '학년', '서답형배점'], // 주차: v1.1.0, 결과공개: v1.2.0, 종류·학년: v1.4.0, 서답형배점: v1.6.0. 칸이 없어도 동작
+    text: ['세트ID', '세트이름', '학교', '사용', '종류', '학년', '서답형배점'],
     notes: {
       '세트ID': '세트마다 겹치지 않게 정하는 이름. 예: 1107-가나고-1. 문항 탭에도 똑같이 써요.',
       '세트이름': '학생 화면에 보이는 이름이에요.',
@@ -54,7 +54,8 @@ const SHEET_DEFS = {
       '주차': '몇 주차 세트인지 숫자로 써요. 예: 1. 비우면 누적 리포트(주차별 점수)에서 빠져요.',
       '종류': '비우면 내신. 학교별 기출 모의평가는 "모의평가"라고 써요. 학생 목록과 누적 리포트에서 따로 보여요.',
       '학년': '비우면 그 학교 전체. 숫자(예: 1)를 쓰면 학생 탭 학년이 같은 학생에게만 보여요.',
-      '결과공개': 'Y면 학생이 제출 뒤 점수와 틀린 문항을 봐요. 비우면 학생에게는 자기가 칠한 답만 보여요(선생님 화면에는 항상 점수가 보여요). 나중에 Y로 바꾸면 그때부터 공개돼요.'
+      '결과공개': 'Y면 학생이 제출 뒤 점수와 틀린 문항을 봐요. 비우면 학생에게는 자기가 칠한 답만 보여요(선생님 화면에는 항상 점수가 보여요). 나중에 Y로 바꾸면 그때부터 공개돼요.',
+      '서답형배점': '서답형이 있는 세트만 써요. 서답형 문항별 만점을 쉼표로 (예: 4,4,4,4,4 → 서답형 20점, 객관식은 80점으로 환산). 서답형 점수는 [서답형] 탭에 적어요. 이 칸을 쓴 세트는 학생에게 점수를 보여 주지 않아요.'
     }
   },
   items: {
@@ -79,6 +80,20 @@ const SHEET_DEFS = {
       '답안': '번호:고른 선지. 예) 3:24 는 3번에 ②④를 골랐다는 뜻, 5:- 는 비움.',
       '점수': '100점 만점으로 바꾼 점수예요.',
       '틀린문항': '비운 문항도 틀린 문항에 들어가요.'
+    }
+  },
+  essays: { // v1.6.0
+    name: '서답형',
+    headers: ['세트ID', '학생ID', '이름', '학교'],
+    extra: ['객관식', '서답형1', '서답형2', '서답형3', '서답형4', '서답형5', '서답형합계', '합계', '메모'],
+    system: ['세트ID', '학생ID', '이름', '학교', '객관식', '서답형합계', '합계'],
+    text: ['세트ID', '학생ID', '이름', '학교'],
+    notes: {
+      '세트ID': '세트 탭에서 세트 행을 고르고 메뉴 [내신 관리 → 선택한 세트 서답형 입력표 만들기]를 누르면 제출한 학생 줄이 생겨요.',
+      '객관식': '앱이 채점한 객관식 점수예요(100 - 서답형 만점 기준). 직접 고치지 마세요.',
+      '서답형1': '서답형 문항별 점수를 적어요. 0점은 0, 아직 채점 안 했으면 비워 두세요. 그 세트의 서답형 칸을 모두 채워야 합계가 앱에 나와요.',
+      '서답형합계': '자동 계산이에요.',
+      '합계': '객관식 + 서답형. 자동 계산이에요. 서답형 칸이 다 차야 나와요.'
     }
   },
   homework: {
@@ -359,6 +374,23 @@ function apiTeacherLogin_(req) {
   });
 }
 
+function essaySummary_(rows, set) {
+  const avg = function (arr) { return arr.length ? round1_(arr.reduce(function (a, b) { return a + b; }, 0) / arr.length) : null; };
+  const done = rows.filter(function (x) { return x.essay.done; });
+  const totals = done.map(function (x) { return x.essay.total; });
+  return {
+    max: set.essay.max,
+    mcqMax: round1_(100 - set.essay.max),
+    count: set.essay.points.length,
+    graded: done.length,
+    bad: rows.filter(function (x) { return x.essay.bad.length; }).map(function (x) { return x.name; }),
+    mcqAvg: avg(rows.map(function (x) { return x.essay.mcq; })),
+    totalAvg: avg(totals),
+    totalMax: totals.length ? Math.max.apply(null, totals) : null,
+    totalMin: totals.length ? Math.min.apply(null, totals) : null
+  };
+}
+
 function apiTeacherToday_(req) {
   getSession_(req.token, 'teacher');
   const today = todayKey_();
@@ -370,6 +402,7 @@ function apiTeacherToday_(req) {
   const items = loadItems_();
   const students = readTable_('students').rows.filter(function (r) { return isActive_(r) && norm_(r['이름']); });
   const subs = readTable_('submissions').rows;
+  const essays = loadEssays_(); // v1.6.0
 
   const everDone = {}; // 세트ID → {학생ID: true}
   subs.forEach(function (r) {
@@ -398,10 +431,16 @@ function apiTeacherToday_(req) {
         count: Number(r['문항수']),
         wrong: parseNumList_(r['틀린문항']),
         blank: parseNumList_(r['비운문항']),
-        time: Utilities.formatDate(submittedAt_(r), CONFIG.TZ, 'HH:mm')
+        time: Utilities.formatDate(submittedAt_(r), CONFIG.TZ, 'HH:mm'),
+        essay: essayBrief_(essayInfo_(r, set, items, essays)) // v1.6.0: 서답형 세트만
       };
     });
-    rows.sort(function (a, b) { return b.score - a.score || a.name.localeCompare(b.name, 'ko'); });
+    if (isEssaySet_(set)) { // 합계가 나온 학생 먼저(합계 순), 그다음 객관식 순
+      rows.sort(function (a, b) {
+        return (b.essay.done ? 1 : 0) - (a.essay.done ? 1 : 0) || (b.essay.done ? b.essay.total - a.essay.total : 0) ||
+          b.essay.mcq - a.essay.mcq || a.name.localeCompare(b.name, 'ko');
+      });
+    } else rows.sort(function (a, b) { return b.score - a.score || a.name.localeCompare(b.name, 'ko'); });
     const scores = rows.map(function (x) { return x.score; });
     const n = rows.length;
     const itemRates = its.map(function (it) {
@@ -434,7 +473,8 @@ function apiTeacherToday_(req) {
       min: n ? Math.min.apply(null, scores) : null,
       itemRates: itemRates,
       rows: rows,
-      missing: missing
+      missing: missing,
+      essay: isEssaySet_(set) ? essaySummary_(rows, set) : null // v1.6.0
     };
   });
 
@@ -524,7 +564,11 @@ function apiParentReport_(req) {
   const setById = setsById_();
   const items = loadItems_();
   const kindOf = function (r) { const set = setById[norm_(r['세트ID'])]; return set ? set.kind : KIND_NAESIN; };
-  const subs = readTable_('submissions').rows.filter(function (r) { return norm_(r['학교']) === school; });
+  const subsAll = readTable_('submissions').rows.filter(function (r) { return norm_(r['학교']) === school; });
+  const mineAll = subsAll.filter(function (r) { return String(r['학생ID']) === s.sid; });
+  // v1.6.0: 서답형 세트는 합계로, 채점 전이면 추세·반 평균에서 뺌 (다른 세트는 그대로)
+  const essays = loadEssays_();
+  const subs = applyEssay_(subsAll, setById, items, essays).rows;
   const mine = subs.filter(function (r) { return String(r['학생ID']) === s.sid; });
 
   // 반 평균(집계): 같은 학교 학생들의 세트별 점수 평균
@@ -533,14 +577,16 @@ function apiParentReport_(req) {
   // 2명뿐이면 평균과 내 점수로 다른 아이 점수를 알 수 있으니, 3명 이상일 때만 평균을 줌
   const avgOf = function (arr) { return arr && arr.length >= PARENT_MIN_AVG_N ? round1_(arr.reduce(function (a, b) { return a + b; }, 0) / arr.length) : null; };
 
-  const recent = mine.slice().sort(function (a, b) { return submittedAt_(b) - submittedAt_(a); }).slice(0, 10).map(function (r) {
+  const recent = mineAll.slice().sort(function (a, b) { return submittedAt_(b) - submittedAt_(a); }).slice(0, 10).map(function (r) {
     const id = norm_(r['세트ID']);
     const set = setById[id];
+    const info = essayInfo_(r, set, items, essays);
     return {
       date: submissionDate_(r),
       title: set ? set.title : String(r['세트이름'] || id),
       kind: kindOf(r),
-      score: Number(r['점수']),
+      score: info ? info.total : Number(r['점수']),
+      essay: info ? { mcq: info.mcq, mcqMax: info.mcqMax, essay: info.essay, essayMax: info.essayMax, done: info.done } : null,
       correct: Number(r['맞은수']),
       count: Number(r['문항수']),
       wrong: parseNumList_(r['틀린문항']),
@@ -568,11 +614,11 @@ function apiParentReport_(req) {
     };
   };
 
-  const all = buildStats_(mine, setById, items);
+  const all = buildStats_(mineAll, setById, items); // 세부항목은 객관식 문항으로 (채점 전 서답형 세트도 포함)
   return {
     name: String(st['이름']).trim(),
     school: String(st['학교']).trim(),
-    submitted: mine.length,
+    submitted: mineAll.length,
     recent: recent,
     naesin: trendOf(KIND_NAESIN, '주차'),
     mock: trendOf(KIND_MOCK, '회'),
@@ -624,11 +670,12 @@ function apiTeacherEval_(req) {
   const items = loadItems_();
   const by = {};
   const order = [];
+  let essays = null;
   readTable_('submissions').rows.forEach(function (r) {
     if (submissionDate_(r) !== date) return;
     const sid = String(r['학생ID']);
     if (!by[sid]) {
-      by[sid] = { name: String(r['이름']).trim(), school: String(r['학교']).trim(), correct: 0, count: 0, sets: [], units: {}, unitOrder: [] };
+      by[sid] = { name: String(r['이름']).trim(), school: String(r['학교']).trim(), correct: 0, count: 0, sets: [], units: {}, unitOrder: [], essays: [] };
       order.push(sid);
     }
     const st = by[sid];
@@ -636,6 +683,8 @@ function apiTeacherEval_(req) {
     st.correct += Number(r['맞은수']) || 0;
     st.count += Number(r['문항수']) || 0;
     st.sets.push(setById[id] ? setById[id].title : String(r['세트이름'] || id));
+    const info = essayInfo_(r, setById[id], items, essays || (essays = loadEssays_())); // v1.6.0
+    if (info) st.essays.push({ title: setById[id].title, mcq: info.mcq, mcqMax: info.mcqMax, essay: info.essay, essayMax: info.essayMax, total: info.total, done: info.done });
     const wrong = parseNumList_(r['틀린문항']);
     const answered = answeredNumbers_(r['답안']);
     (items[id] || []).forEach(function (it) {
@@ -656,7 +705,7 @@ function apiTeacherEval_(req) {
     date: date,
     students: order.map(function (sid) {
       const st = by[sid];
-      return { name: st.name, school: st.school, correct: st.correct, count: st.count, sets: st.sets, units: st.unitOrder.map(function (u) { return st.units[u]; }), parent: !!hasParent[sid] };
+      return { name: st.name, school: st.school, correct: st.correct, count: st.count, sets: st.sets, units: st.unitOrder.map(function (u) { return st.units[u]; }), parent: !!hasParent[sid], essays: st.essays };
     })
   };
 }
@@ -726,13 +775,19 @@ function apiTeacherTrend_(req) {
   });
 
   const unweeked = {};
+  const essays = loadEssays_(); // v1.6.0
+  const pendingEssay = {};
   const list = students.filter(function (r) { return norm_(r['학교']) === norm_(school); }).map(function (r) {
     const rows = bySid[String(r['학생ID'])] || [];
     rows.forEach(function (x) {
       const set = setById[norm_(x['세트ID'])];
       if (!set || set.week == null) unweeked[norm_(x['세트ID'])] = set ? set.title : String(x['세트이름'] || x['세트ID']);
     });
-    const st = buildStats_(rows, setById, items, suffix);
+    // v1.6.0: 서답형 세트는 합계로, 채점 전이면 주차(회차) 점수에서 뺌. 세부항목은 객관식 문항 그대로
+    const ess = applyEssay_(rows, setById, items, essays);
+    Object.keys(ess.pending).forEach(function (id) { pendingEssay[id] = (pendingEssay[id] || 0) + ess.pending[id]; });
+    const st = buildStats_(ess.rows, setById, items, suffix);
+    const stTags = ess.rows.length === rows.length ? st : buildStats_(rows, setById, items, suffix);
     const weeks = {};
     st.weeks.forEach(function (w) { weeks[w.week] = { score: w.score, sets: w.sets.map(function (x) { return { title: x.title, score: x.score }; }) }; });
     return {
@@ -740,8 +795,8 @@ function apiTeacherTrend_(req) {
       grade: String(r['학년'] == null ? '' : r['학년']).trim(),
       weeks: weeks,
       avg: st.avg,
-      weak: weakTags_(st.tags),
-      tags: st.tags,
+      weak: weakTags_(stTags.tags),
+      tags: stTags.tags,
       submitted: rows.length
     };
   });
@@ -762,8 +817,175 @@ function apiTeacherTrend_(req) {
     school: school,
     weeks: weeks,
     students: list,
-    unweekedSets: Object.keys(unweeked).map(function (id) { return { setId: id, title: unweeked[id] }; })
+    unweekedSets: Object.keys(unweeked).map(function (id) { return { setId: id, title: unweeked[id] }; }),
+    pendingEssay: Object.keys(pendingEssay).map(function (id) { return { setId: id, title: setById[id] ? setById[id].title : id, n: pendingEssay[id] }; }) // v1.6.0
   };
+}
+
+/* ───────────── 서답형 합산 (v1.6.0에 추가) ─────────────
+ * 세트 탭 '서답형배점'에 서답형 문항별 만점을 쉼표로 적음 (예: 4,4,4,4,4 → 서답형 20점).
+ * 비어 있으면 지금처럼 객관식만(아무것도 바뀌지 않음).
+ * 채우면: 객관식 = 맞힌 배점 / 배점 합계 × (100 - 서답형 만점), 서답형 = [서답형] 탭에 선생님이 적은 점수.
+ * 합계는 그 세트의 서답형 칸을 모두 채웠을 때만 나옴. 그 전에는 '채점 전'으로 보고 추세·반 평균에서 뺌.
+ * 서답형이 있는 세트는 학생에게 점수를 보여 주지 않음(결과공개 칸과 상관없이).
+ */
+const ESSAY_COL = '서답형'; // 서답형 탭의 문항 칸 이름: 서답형1, 서답형2, …
+
+function parseEssayPoints_(v) {
+  const raw = String(v == null ? '' : v).trim();
+  if (!raw) return null;
+  const parts = raw.split(/[,\/·\s]+/).filter(function (x) { return x; });
+  const points = parts.map(Number);
+  const bad = '서답형배점은 4,4,4,4,4처럼 문항별 만점을 쉼표로 나눠 적어 주세요 (합계는 100보다 작게)';
+  if (!points.length || points.length > 20 || points.some(function (p) { return !(p > 0); })) return { error: bad };
+  const max = round1_(points.reduce(function (a, b) { return a + b; }, 0));
+  if (!(max < 100)) return { error: bad };
+  return { points: points, max: max };
+}
+
+function isEssaySet_(set) { return !!(set && set.essay && !set.essay.error); }
+
+/** [서답형] 탭 → { '세트ID|학생ID': 행 }. 탭이 없으면 빈 것 */
+function loadEssays_() {
+  if (!SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_DEFS.essays.name)) return {};
+  const t = readTable_('essays');
+  let bySchoolName = null;
+  const out = {};
+  t.rows.forEach(function (r) {
+    const id = norm_(r['세트ID']);
+    if (!id) return;
+    let sid = String(r['학생ID'] == null ? '' : r['학생ID']).trim();
+    if (!sid) { // 학생ID 없이 이름·학교만 적은 줄
+      if (!bySchoolName) {
+        bySchoolName = {};
+        readTable_('students').rows.forEach(function (x) { bySchoolName[norm_(x['학교']) + '|' + norm_(x['이름'])] = String(x['학생ID']); });
+      }
+      sid = bySchoolName[norm_(r['학교']) + '|' + norm_(r['이름'])] || '';
+    }
+    if (sid) out[id + '|' + sid] = r;
+  });
+  return out;
+}
+
+/** 제출 한 줄의 객관식·서답형·합계. 서답형이 없는 세트면 null */
+function essayInfo_(r, set, items, essays) {
+  if (!isEssaySet_(set)) return null;
+  const e = set.essay;
+  const mcqMax = round1_(100 - e.max);
+  const wrong = parseNumList_(r['틀린문항']);
+  const answered = answeredNumbers_(r['답안']);
+  let got = 0, tot = 0;
+  (items[set.id] || []).forEach(function (it) {
+    if (answered && answered.indexOf(it.no) < 0) return;
+    tot += it.points;
+    if (wrong.indexOf(it.no) < 0) got += it.points;
+  });
+  const mcq = tot > 0 ? round1_(got / tot * mcqMax) : round1_(Number(r['점수']) * mcqMax / 100);
+  const rec = essays[set.id + '|' + String(r['학생ID'])];
+  const scores = [];
+  const bad = [];
+  let sum = 0, filled = 0;
+  e.points.forEach(function (p, i) {
+    const v = rec ? rec[ESSAY_COL + (i + 1)] : '';
+    if (v === '' || v == null || String(v).trim() === '') { scores.push(null); return; }
+    const n = Number(v);
+    if (isNaN(n) || n < 0 || n > p + 1e-9) { scores.push(null); bad.push(i + 1); return; }
+    scores.push(n); sum += n; filled++;
+  });
+  const done = filled === e.points.length;
+  const essay = done ? round1_(sum) : null;
+  return {
+    mcq: mcq, mcqMax: mcqMax, essay: essay, essayMax: e.max,
+    total: done ? round1_(mcq + essay) : null,
+    done: done, scores: scores, points: e.points, bad: bad
+  };
+}
+
+/** 추세·평균용: 서답형 세트는 합계로 바꾸고, 채점 전이면 뺌. 다른 세트는 그대로 */
+function applyEssay_(rows, setById, items, essays) {
+  const out = [];
+  const pending = {};
+  rows.forEach(function (r) {
+    const set = setById[norm_(r['세트ID'])];
+    const info = essayInfo_(r, set, items, essays);
+    if (!info) { out.push(r); return; }
+    if (!info.done) { pending[set.id] = (pending[set.id] || 0) + 1; return; }
+    const c = {};
+    Object.keys(r).forEach(function (k) { c[k] = r[k]; });
+    c['점수'] = info.total;
+    out.push(c);
+  });
+  return { rows: out, pending: pending };
+}
+
+function essayBrief_(info) {
+  return info ? { mcq: info.mcq, mcqMax: info.mcqMax, essay: info.essay, essayMax: info.essayMax, total: info.total, done: info.done, bad: info.bad } : null;
+}
+
+/** 메뉴: 고른 세트의 제출 학생 줄을 [서답형] 탭에 만듦. 이미 있는 줄은 객관식 점수만 새로 씀 */
+function makeEssayRows_(setRowNumbers) {
+  return withLock_(function () {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    if (!ss.getSheetByName(SHEET_DEFS.essays.name)) setupSheet_(ss, 'essays');
+    const setRows = readTable_('sets').rows.filter(function (r) { return setRowNumbers.indexOf(r._row) >= 0 && norm_(r['세트ID']); });
+    const setById = setsById_();
+    const items = loadItems_();
+    const subs = readTable_('submissions').rows;
+    return setRows.map(function (sr) {
+      const set = setById[norm_(sr['세트ID'])];
+      if (!set.essay) return { title: set.title, error: '세트 탭의 서답형배점 칸이 비어 있어요 (예: 4,4,4,4,4)' };
+      if (set.essay.error) return { title: set.title, error: set.essay.error };
+      const n = set.essay.points.length;
+      ensureEssayCols_(n);
+      let t = readTable_('essays');
+      const have = {};
+      t.rows.forEach(function (x) { if (norm_(x['세트ID']) === set.id && String(x['학생ID'])) have[String(x['학생ID'])] = x; });
+      let added = 0, kept = 0;
+      subs.filter(function (x) { return norm_(x['세트ID']) === set.id; }).forEach(function (x) {
+        const sid = String(x['학생ID']);
+        const info = essayInfo_(x, set, items, {});
+        if (have[sid]) { t.set(have[sid], '객관식', info.mcq); kept++; return; }
+        t.append({ '세트ID': String(sr['세트ID']).trim(), '학생ID': sid, '이름': String(x['이름']).trim(), '학교': String(x['학교']).trim(), '객관식': info.mcq });
+        added++;
+      });
+      writeEssayFormulas_(set.id, n);
+      return { title: set.title, added: added, kept: kept, count: n, max: set.essay.max, mcqMax: round1_(100 - set.essay.max) };
+    });
+  });
+}
+
+function ensureEssayCols_(n) {
+  const sh = sheet_('essays');
+  const lastCol = sh.getLastColumn();
+  const headers = sh.getRange(1, 1, 1, lastCol).getValues()[0].map(function (h) { return String(h == null ? '' : h).trim(); });
+  let next = headers.length;
+  for (let k = 1; k <= n; k++) {
+    if (headers.indexOf(ESSAY_COL + k) < 0) { next++; sh.getRange(1, next).setValue(ESSAY_COL + k).setFontWeight('bold').setBackground('#f1f3f5'); }
+  }
+  ['객관식', '서답형합계', '합계'].forEach(function (h) {
+    if (headers.indexOf(h) < 0) { next++; sh.getRange(1, next).setValue(h).setFontWeight('bold').setBackground('#e9ecef').setFontColor('#868e96'); }
+  });
+}
+
+function colLetter_(c) {
+  let s = '';
+  while (c > 0) { const m = (c - 1) % 26; s = String.fromCharCode(65 + m) + s; c = Math.floor((c - 1) / 26); }
+  return s;
+}
+
+function writeEssayFormulas_(setId, n) {
+  const t = readTable_('essays');
+  const sh = t.sheet;
+  const headers = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0].map(function (h) { return String(h == null ? '' : h).trim(); });
+  const c = function (h) { return headers.indexOf(h) + 1; };
+  t.rows.forEach(function (r) {
+    if (norm_(r['세트ID']) !== setId) return;
+    const cells = [];
+    for (let k = 1; k <= n; k++) cells.push(colLetter_(c(ESSAY_COL + k)) + r._row);
+    const list = cells.join(',');
+    sh.getRange(r._row, c('서답형합계')).setFormula('=IF(COUNT(' + list + ')=0,"",ROUND(SUM(' + list + '),1))');
+    sh.getRange(r._row, c('합계')).setFormula('=IF(COUNT(' + list + ')<' + n + ',"",ROUND(' + colLetter_(c('객관식')) + r._row + '+SUM(' + list + '),1))');
+  });
 }
 
 function setsById_() {
@@ -947,6 +1169,7 @@ function loadSets_() {
     let choices = Number(r['선지수']);
     if (!choices || choices % 1 !== 0) choices = CONFIG.DEFAULT_CHOICES;
     choices = Math.max(2, Math.min(9, choices));
+    const essay = parseEssayPoints_(r['서답형배점']);
     return {
       id: id,
       title: String(r['세트이름'] == null ? '' : r['세트이름']).trim() || id,
@@ -954,9 +1177,10 @@ function loadSets_() {
       choices: choices,
       on: isYes_(r['사용']),
       week: parseWeek_(r['주차']),
-      reveal: isYes_(r['결과공개']), // v1.2.0
+      reveal: isYes_(r['결과공개']) && !essay, // v1.2.0 (v1.6.0: 서답형이 있는 세트는 학생에게 비공개)
       kind: parseKind_(r['종류']),    // v1.4.0
-      grade: gradeKey_(r['학년'])     // v1.4.0
+      grade: gradeKey_(r['학년']),    // v1.4.0
+      essay: essay                    // v1.6.0: null이면 객관식만
     };
   });
 }
@@ -999,6 +1223,7 @@ function setProblem_(set, items) {
     total += it.points;
   }
   if (!(total > 0)) return '배점 합계가 0이에요';
+  if (set.essay && set.essay.error) return set.essay.error; // v1.6.0
   return '';
 }
 
@@ -1250,13 +1475,15 @@ function onOpen() {
     .addItem('선택한 학생 학부모 초기 비밀번호 만들기', 'menuParentCodes')
     .addItem('선택한 학생 학부모 잠금 풀기', 'menuUnlockParent')
     .addSeparator()
+    .addItem('선택한 세트 서답형 입력표 만들기', 'menuEssaySheet')
+    .addSeparator()
     .addItem('서버 버전 보기', 'menuVersion')
     .addToUi();
 }
 
 function menuSetup() {
   setupSheets_();
-  SpreadsheetApp.getUi().alert('탭을 만들었어요: 학생, 세트, 문항, 제출, 숙제검사, 설정\n\n다음: 메뉴 [내신 관리 → ② 선생님 비밀번호 정하기]');
+  SpreadsheetApp.getUi().alert('탭을 만들었어요: 학생, 세트, 문항, 제출, 서답형, 숙제검사, 설정\n(이미 있던 탭과 자료는 그대로예요)\n\n처음이면 다음: 메뉴 [내신 관리 → ② 선생님 비밀번호 정하기]');
 }
 
 function menuSetTeacherPassword() {
@@ -1317,6 +1544,25 @@ function menuUnlockParent() {
   ui.alert('학부모 잠금을 풀었어요: ' + rows.names.join(', '));
 }
 
+function menuEssaySheet() {
+  const ui = SpreadsheetApp.getUi();
+  const sh = SpreadsheetApp.getActiveSheet();
+  if (sh.getName() !== SHEET_DEFS.sets.name) {
+    ui.alert('[세트] 탭에서 서답형이 있는 세트의 행을 선택한 다음 다시 눌러 주세요.');
+    return;
+  }
+  const range = sh.getActiveRange();
+  const nums = [];
+  for (let r = range.getRow(); r < range.getRow() + range.getNumRows(); r++) if (r >= 2) nums.push(r);
+  const res = makeEssayRows_(nums);
+  if (!res.length) { ui.alert('세트 행을 선택해 주세요.'); return; }
+  ui.alert('서답형 입력표', res.map(function (x) {
+    if (x.error) return '· ' + x.title + ': ' + x.error;
+    return '· ' + x.title + ': 새로 ' + x.added + '명' + (x.kept ? ', 이미 있던 ' + x.kept + '명은 점수 칸 그대로' : '') +
+      ' (객관식 ' + x.mcqMax + '점 + 서답형 ' + x.max + '점, 서답형 ' + x.count + '칸)';
+  }).join('\n') + '\n\n[서답형] 탭에서 서답형1~ 칸에 점수를 적어 주세요. 0점은 0, 아직 채점 안 했으면 비워 두세요.\n앱에서 OMR을 늦게 낸 학생이 있으면 이 메뉴를 다시 누르면 줄이 더해져요.', ui.ButtonSet.OK);
+}
+
 function menuVersion() {
   SpreadsheetApp.getUi().alert('서버 버전: ' + SERVER_VERSION);
 }
@@ -1339,26 +1585,29 @@ function selectedStudentRows_() {
 
 /* 메뉴가 쓰는 기능 (테스트도 이 함수들을 씀) */
 
+/** 탭 하나를 만들거나, 빠진 칸만 오른쪽에 더함 (이미 있는 자료는 그대로) */
+function setupSheet_(ss, key) {
+  const def = SHEET_DEFS[key];
+  const sh = ss.getSheetByName(def.name) || ss.insertSheet(def.name);
+  const lastCol = sh.getLastColumn();
+  const existing = lastCol ? sh.getRange(1, 1, 1, lastCol).getValues()[0].map(function (h) { return String(h == null ? '' : h).trim(); }) : [];
+  while (existing.length && !existing[existing.length - 1]) existing.pop();
+  const headers = existing.slice();
+  def.headers.concat(def.extra || []).forEach(function (h) { if (headers.indexOf(h) < 0) headers.push(h); });
+  sh.getRange(1, 1, 1, headers.length).setValues([headers]).setFontWeight('bold').setBackground('#f1f3f5');
+  sh.setFrozenRows(1);
+  const maxRows = Math.max(sh.getMaxRows() - 1, 1);
+  headers.forEach(function (h, i) {
+    const cell = sh.getRange(1, i + 1);
+    if (def.system && def.system.indexOf(h) >= 0) cell.setBackground('#e9ecef').setFontColor('#868e96');
+    if (def.notes && def.notes[h]) cell.setNote(def.notes[h]);
+    if (def.text && def.text.indexOf(h) >= 0) sh.getRange(2, i + 1, maxRows, 1).setNumberFormat('@');
+  });
+}
+
 function setupSheets_() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
-  Object.keys(SHEET_DEFS).forEach(function (key) {
-    const def = SHEET_DEFS[key];
-    const sh = ss.getSheetByName(def.name) || ss.insertSheet(def.name);
-    const lastCol = sh.getLastColumn();
-    const existing = lastCol ? sh.getRange(1, 1, 1, lastCol).getValues()[0].map(function (h) { return String(h == null ? '' : h).trim(); }) : [];
-    while (existing.length && !existing[existing.length - 1]) existing.pop();
-    const headers = existing.slice();
-    def.headers.concat(def.extra || []).forEach(function (h) { if (headers.indexOf(h) < 0) headers.push(h); });
-    sh.getRange(1, 1, 1, headers.length).setValues([headers]).setFontWeight('bold').setBackground('#f1f3f5');
-    sh.setFrozenRows(1);
-    const maxRows = Math.max(sh.getMaxRows() - 1, 1);
-    headers.forEach(function (h, i) {
-      const cell = sh.getRange(1, i + 1);
-      if (def.system && def.system.indexOf(h) >= 0) cell.setBackground('#e9ecef').setFontColor('#868e96');
-      if (def.notes && def.notes[h]) cell.setNote(def.notes[h]);
-      if (def.text && def.text.indexOf(h) >= 0) sh.getRange(2, i + 1, maxRows, 1).setNumberFormat('@');
-    });
-  });
+  Object.keys(SHEET_DEFS).forEach(function (key) { setupSheet_(ss, key); });
   const st = readTable_('settings');
   const have = {};
   st.rows.forEach(function (r) { have[norm_(r['항목'])] = true; });

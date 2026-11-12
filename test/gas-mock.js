@@ -36,12 +36,14 @@ class MockRange {
   setBackground() { return this; }
   setFontColor() { return this; }
   setNote(n) { this.sheet.notes[`${this.r},${this.c}`] = n; return this; }
+  // 수식은 계산하지 않고 글자 그대로 저장 (서버는 수식 칸을 읽지 않음)
+  setFormula(f) { this.sheet.formulas[`${this.r},${this.c}`] = f; this.sheet.setCell(this.r, this.c, f); return this; }
   getRow() { return this.r; }
   getNumRows() { return this.nr; }
 }
 
 class MockSheet {
-  constructor(name, ss) { this.name = name; this.ss = ss; this.data = []; this.textCols = new Set(); this.notes = {}; this.frozen = 0; }
+  constructor(name, ss) { this.name = name; this.ss = ss; this.data = []; this.textCols = new Set(); this.notes = {}; this.formulas = {}; this.frozen = 0; }
   getName() { return this.name; }
   getCell(r, c) {
     const row = this.data[r - 1];
