@@ -953,6 +953,60 @@ test('서답형 탭이 없는 예전 시트에서도 다른 기능은 그대로'
   assert.ok(g.sheet('서답형'));
 });
 
+/* ── v1.6.1: 틀린 문항이 날짜로 바뀌던 문제 ── */
+
+function wrongAt(nums) {
+  const a = Object.assign({}, KEY_A);
+  nums.forEach((n) => { a[n] = [((KEY_A[n][0]) % 5) + 1]; });
+  return a;
+}
+
+test('모의 시트도 진짜처럼: appendRow는 글자 형식을 무시하고 "1, 2, 9"를 날짜로 바꿈', () => {
+  const g = fresh();
+  const sh = g.sheet('제출');
+  const col = sh.data[0].indexOf('틀린문항');
+  sh.appendRow(sh.data[0].map((h) => (h === '틀린문항' ? '1, 2, 9' : h === '세트ID' ? 'X' : '')));
+  assert.ok(sh.data[sh.getLastRow() - 1][col] instanceof Date, '모의 시트가 실제 문제를 재현해야 함');
+});
+
+test('틀린 문항 1, 2, 9: 글자로 저장되고 화면에도 1, 2, 9 (v1.6.1)', () => {
+  const g = fresh();
+  const t = studentReady(g, '샘플고A', '가상학생01');
+  const r = ok(g.call('submit', { token: t, setId: 'DEMO-A-1', answers: wrongAt([1, 2, 9]) }));
+  assert.deepStrictEqual(r.result.wrong, [1, 2, 9]);
+  const row = g.sheet('제출').objects().find((x) => x.이름 === '가상학생01');
+  assert.strictEqual(row.틀린문항, '1, 2, 9', '시트에 글자 그대로');
+  const today = ok(g.call('teacherToday', { token: teacherReady(g) }));
+  assert.deepStrictEqual(today.sets.find((x) => x.setId === 'DEMO-A-1').rows[0].wrong, [1, 2, 9]);
+});
+
+test('이미 날짜로 바뀐 칸은 답안과 정답으로 다시 계산해서 보여 줌 (v1.6.1)', () => {
+  const g = fresh();
+  const t = studentReady(g, '샘플고A', '가상학생01');
+  ok(g.call('submit', { token: t, setId: 'DEMO-A-1', answers: wrongAt([1, 2, 9]) }));
+  const sh = g.sheet('제출');
+  const row = sh.objects().find((x) => x.이름 === '가상학생01')._row;
+  sh.data[row - 1][sh.data[0].indexOf('틀린문항')] = new Date('2001-02-09T00:00:00+09:00'); // 예전 서버가 남긴 모양
+  const today = ok(g.call('teacherToday', { token: teacherReady(g) }));
+  const x = today.sets.find((s) => s.setId === 'DEMO-A-1').rows[0];
+  assert.deepStrictEqual([x.wrong, x.blank], [[1, 2, 9], []]);
+  const codes = parentCodes(g, ['가상학생01']);
+  const pr = ok(g.call('parentReport', { token: parentReady(g, '샘플고A', '가상학생01', codes['가상학생01']) }));
+  assert.deepStrictEqual(pr.recent[0].wrong, [1, 2, 9]);
+});
+
+test('서답형 세트 객관식 점수도 날짜로 바뀐 칸에 휘둘리지 않음 (v1.6.1)', () => {
+  const g = fresh();
+  addEssaySet(g);
+  const t = studentReady(g, '샘플고A', '가상학생01');
+  ok(g.call('submit', { token: t, setId: 'ESS 1', answers: { 1: [2], 2: [1], 3: [3], 4: [4] } })); // 1, 2번 틀림 → 40/80
+  const sh = g.sheet('제출');
+  const row = sh.objects().find((x) => x.이름 === '가상학생01')._row;
+  sh.data[row - 1][sh.data[0].indexOf('틀린문항')] = new Date('2001-02-01T00:00:00+09:00');
+  const today = ok(g.call('teacherToday', { token: teacherReady(g) }));
+  assert.strictEqual(today.sets.find((s) => s.setId === 'ESS1').rows[0].essay.mcq, 40);
+});
+
 /* ── 실행 ── */
 
 let passed = 0;

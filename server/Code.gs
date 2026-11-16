@@ -6,7 +6,7 @@
  *
  * 서버 파일을 고칠 때마다 아래 버전 번호를 올립니다.
  */
-const SERVER_VERSION = '1.6.0';
+const SERVER_VERSION = '1.6.1';
 
 const CONFIG = {
   TZ: 'Asia/Seoul',
@@ -1402,19 +1402,48 @@ function readTable_(key) {
     headers.forEach(function (h, i) { if (h && !(h in obj)) obj[h] = row[i]; });
     rows.push(obj);
   }
+  if (key === 'submissions') repairSubmissionRows_(rows); // v1.6.1
+  // v1.6.1: 글자 칸(def.text)은 쓰기 전에 '글자' 형식으로. appendRow는 이 형식을 무시하고
+  // "1, 2, 9" 같은 글자를 날짜로 바꿔 버려서, setValues로 바꿈
+  const isText = function (h) { return !!(def.text && def.text.indexOf(h) >= 0); };
   return {
     sheet: sh,
     rows: rows,
     has: function (header) { return header in col; },
     set: function (rowObj, header, value) {
       if (!(header in col)) throw userErr_('[' + def.name + '] 탭에 [' + header + '] 칸이 없어요. 시트 메뉴 [내신 관리 → 시트 탭 만들기]를 다시 실행해 주세요.', 'SETUP');
-      sh.getRange(rowObj._row, col[header] + 1).setValue(value);
+      const cell = sh.getRange(rowObj._row, col[header] + 1);
+      if (isText(header)) cell.setNumberFormat('@');
+      cell.setValue(value);
       rowObj[header] = value;
     },
     append: function (obj) {
-      sh.appendRow(headers.map(function (h) { return (h && h in obj) ? obj[h] : ''; }));
+      const vals = headers.map(function (h) { return (h && h in obj) ? obj[h] : ''; });
+      const row = sh.getLastRow() + 1;
+      if (row > sh.getMaxRows()) sh.insertRowsAfter(sh.getMaxRows(), row - sh.getMaxRows());
+      headers.forEach(function (h, i) { if (h && isText(h)) sh.getRange(row, i + 1).setNumberFormat('@'); });
+      sh.getRange(row, 1, 1, vals.length).setValues([vals]);
     }
   };
+}
+
+function isDate_(v) { return Object.prototype.toString.call(v) === '[object Date]'; }
+
+/** v1.6.1: 틀린문항·비운문항 칸이 시트에서 날짜로 바뀌어 있으면(예: "1, 2, 9" → 2001-02-09) 답안과 정답으로 다시 계산 */
+function repairSubmissionRows_(rows) {
+  let items = null;
+  rows.forEach(function (r) {
+    if (!isDate_(r['틀린문항']) && !isDate_(r['비운문항'])) return;
+    if (!items) items = loadItems_();
+    const its = items[norm_(r['세트ID'])];
+    const decoded = decodeAnswers_(r['답안']);
+    if (!its || !decoded.length) return;
+    const answers = {};
+    decoded.forEach(function (a) { answers[a.no] = a.choices; });
+    const g = grade_(its, answers);
+    r['틀린문항'] = g.wrong.join(', ');
+    r['비운문항'] = g.blank.join(', ');
+  });
 }
 
 function withLock_(fn) {

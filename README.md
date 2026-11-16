@@ -50,11 +50,12 @@ node tools/shots-fill.js    # 평가 채우기 버튼 테스트 (맥가이7 출�
 
 ## 버전
 
-- 서버 v1.6.0 (`server/Code.gs`의 `SERVER_VERSION`)
+- 서버 v1.6.1 (`server/Code.gs`의 `SERVER_VERSION`)
   - v1.1.0: 누적 리포트(myTrend, teacherTrend)와 세트 주차 칸
   - v1.2.0: 세트별 결과공개 칸, 비공개 세트는 학생에게 내가 칠한 답만
   - v1.3.0: 날짜별 평가 점수(teacherEval) — 평가 채우기 버튼용
   - v1.4.0: 세트 종류(내신/모의평가)·학년 칸
   - v1.5.0: 학부모 로그인·리포트(parentLogin, parentChangePassword, parentReport), 학부모 번호 만들기·잠금 풀기 메뉴, teacherEval에 학부모 비밀번호 여부
   - v1.6.0: 서답형 합산(세트 서답형배점 칸, 서답형 탭, 입력표 만들기 메뉴), 선생님·누적 리포트·학부모·평가 채우기에 합계
+  - v1.6.1: 고침 — 제출 기록을 appendRow 대신 '글자' 형식을 지키는 setValues로 씀. appendRow가 "1, 2, 9" 같은 틀린 문항을 날짜(2001-02-09)로 바꾸던 문제. 이미 날짜로 바뀐 칸은 답안과 정답으로 다시 계산해서 보여 줌
 - 화면: `index.html` v1.3.0, `teacher.html` v1.4.0, `report.html` v1.3.0, `parent.html` v1.1.0, `fill.js` v1.2.0 (각 파일의 버전 표시)

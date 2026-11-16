@@ -51,11 +51,18 @@ class MockSheet {
     return v === undefined || v === null ? '' : v;
   }
   // 진짜 구글 시트처럼: 일반 칸에 '123'을 쓰면 숫자로, '2026-11-07'을 쓰면 날짜로 바뀜
-  setCell(r, c, v) {
+  setCell(r, c, v, ignoreText) {
     while (this.data.length < r) this.data.push([]);
-    if (typeof v === 'string' && r > 1 && !this.textCols.has(c)) {
-      if (/^-?\d+(\.\d+)?$/.test(v.trim())) v = Number(v);
-      else if (/^\d{4}-\d{2}-\d{2}$/.test(v.trim())) v = new Date(v.trim() + 'T00:00:00+09:00');
+    if (typeof v === 'string' && r > 1 && (ignoreText || !this.textCols.has(c))) {
+      const t = v.trim();
+      let ymd;
+      if (/^-?\d+(\.\d+)?$/.test(t)) v = Number(v);
+      else if (/^\d{4}-\d{2}-\d{2}$/.test(t)) v = new Date(t + 'T00:00:00+09:00');
+      // 한국어 시트는 "1, 2, 9"를 2001년 2월 9일로 읽음 (2026-11-15 실제로 일어남)
+      else if ((ymd = /^(\d{1,4})\s*,\s*(\d{1,2})\s*,\s*(\d{1,2})$/.exec(t)) && +ymd[2] >= 1 && +ymd[2] <= 12 && +ymd[3] >= 1 && +ymd[3] <= 31) {
+        const y = +ymd[1] < 100 ? 2000 + +ymd[1] : +ymd[1];
+        v = new Date(Date.UTC(y, +ymd[2] - 1, +ymd[3]) - 9 * 3600 * 1000);
+      }
     }
     this.data[r - 1][c - 1] = v;
   }
@@ -72,12 +79,15 @@ class MockSheet {
   }
   getMaxRows() { return Math.max(1000, this.data.length); }
   getRange(r, c, nr = 1, nc = 1) { return new MockRange(this, r, c, nr, nc); }
-  appendRow(arr) { const r = this.getLastRow() + 1; arr.forEach((v, j) => this.setCell(r, j + 1, v)); }
+  // 진짜 appendRow처럼 '글자' 형식을 무시함 (서버는 v1.6.1부터 appendRow를 안 씀)
+  appendRow(arr) { const r = this.getLastRow() + 1; arr.forEach((v, j) => this.setCell(r, j + 1, v, true)); }
+  insertRowsAfter() { return this; }
   setFrozenRows(n) { this.frozen = n; }
   // 테스트 편의: 헤더 이름으로 행 쓰기
   addRow(obj) {
     const headers = this.data[0];
-    this.appendRow(headers.map((h) => (h in obj ? obj[h] : '')));
+    const r = this.getLastRow() + 1;
+    headers.forEach((h, j) => this.setCell(r, j + 1, h in obj ? obj[h] : ''));
   }
   objects() {
     const headers = this.data[0] || [];
