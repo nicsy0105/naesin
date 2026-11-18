@@ -1059,6 +1059,45 @@ test('날짜 방식(teacherEval)은 예전과 똑같이 동작 (v1.7.0에서 안
   assert.deepStrictEqual(ok(g.call('teacherEval', { token: teacherReady(g), date: '2026-11-08' })).students, []);
 });
 
+/* ── v1.8.0: 누적 리포트 주차별 자세히 ── */
+
+test('누적 리포트: 주차별로 세트·점수·틀린 문항·그 주 세부항목 (v1.8.0)', () => {
+  const g = fresh({ now: '2026-11-07T18:00:00+09:00' });
+  setWeek(g, 'DEMO-A-1', 1);
+  addSet2(g); // 2주차, 고전시가 > 표현상 특징(1,2번)·화자의 태도(3,4번)
+  const t = studentReady(g, '샘플고A', '가상학생01');
+  const a1 = Object.assign({}, KEY_A, { 3: [], 5: [1] }); // 1주차: 3번 비움, 5번 틀림
+  ok(g.call('submit', { token: t, setId: 'DEMO-A-1', answers: a1 }));
+  ok(g.call('submit', { token: t, setId: 'DEMO-A-2', answers: { 1: [1], 2: [2], 3: [1], 4: [4] } })); // 2주차: 3번 틀림
+  const r = ok(g.call('teacherTrend', { token: teacherReady(g), school: '샘플고A' }));
+  const st = r.students.find((x) => x.name === '가상학생01');
+  assert.deepStrictEqual(Object.keys(st.weekDetail).sort(), ['1', '2']);
+  const w1 = st.weekDetail[1], w2 = st.weekDetail[2];
+  assert.deepStrictEqual(w1.sets.map((x) => [x.wrong, x.blank, x.correct, x.count, x.pending]), [[[3, 5], [3], 10, 12, false]]);
+  assert.strictEqual(w1.sets[0].score, st.weeks[1].score);
+  assert.deepStrictEqual(w2.sets.map((x) => [x.title, x.wrong, x.score]), [['[가짜] 2주차 점검', [3], 75]]);
+  assert.deepStrictEqual(w2.tags.map((x) => [x.detail, x.correct, x.total]), [['화자의 태도', 1, 2], ['표현상 특징', 2, 2]], '2주차 세부항목은 2주차 문항만');
+  const allTotal = st.tags.reduce((a, x) => a + x.total, 0);
+  assert.strictEqual(allTotal, 12 + 4, '전체 세부항목은 예전처럼 합친 것');
+  assert.ok(!JSON.stringify(st.weekDetail).includes('가상학생02'));
+});
+
+test('누적 리포트 주차별: 서답형 채점 전 세트도 틀린 문항은 보이고 점수는 채점 전', () => {
+  const g = fresh({ now: '2026-11-12T18:00:00+09:00' });
+  addEssaySet(g); // 모의평가 1회
+  const t = studentReady(g, '샘플고A', '가상학생01');
+  ok(g.call('submit', { token: t, setId: 'ESS 1', answers: { 1: [1], 2: [5], 3: [3], 4: [4] } }));
+  g.ctx.makeEssayRows_([setRowOf(g, 'ESS 1')]);
+  const tt = teacherReady(g);
+  let st = ok(g.call('teacherTrend', { token: tt, school: '샘플고A', kind: '모의평가' })).students.find((x) => x.name === '가상학생01');
+  assert.deepStrictEqual(st.weeks, {}, '회차 점수에는 아직 안 들어감');
+  assert.deepStrictEqual(st.weekDetail[1].sets.map((x) => [x.wrong, x.score, x.pending]), [[[2], null, true]]);
+  setEssay(g, '가상학생01', [4, 4, 4, 4, 4]);
+  st = ok(g.call('teacherTrend', { token: tt, school: '샘플고A', kind: '모의평가' })).students.find((x) => x.name === '가상학생01');
+  assert.deepStrictEqual(st.weekDetail[1].sets.map((x) => [x.score, x.pending]), [[80, false]]);
+  assert.strictEqual(st.weeks[1].score, 80);
+});
+
 /* ── 실행 ── */
 
 let passed = 0;

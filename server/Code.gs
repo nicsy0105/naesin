@@ -6,7 +6,7 @@
  *
  * 서버 파일을 고칠 때마다 아래 버전 번호를 올립니다.
  */
-const SERVER_VERSION = '1.7.0';
+const SERVER_VERSION = '1.8.0';
 
 const CONFIG = {
   TZ: 'Asia/Seoul',
@@ -840,7 +840,8 @@ function apiTeacherTrend_(req) {
       avg: st.avg,
       weak: weakTags_(stTags.tags),
       tags: stTags.tags,
-      submitted: rows.length
+      submitted: rows.length,
+      weekDetail: weekDetail_(rows, setById, items, essays) // v1.8.0
     };
   });
   list.sort(function (a, b) { return a.name.localeCompare(b.name, 'ko'); });
@@ -1076,6 +1077,39 @@ function buildStats_(rows, setById, items, suffix) {
     avg: weeks.length ? round1_(weeks.reduce(function (a, w) { return a + w.score; }, 0) / weeks.length) : null,
     unweeked: unweeked
   };
+}
+
+/** v1.8.0: 주차(회차)별 자세히 — 세트마다 점수·틀린 문항·비운 문항, 그 주의 세부항목 정답률.
+ *  서답형 세트는 합계(채점 전이면 score null, pending true). 주차가 없는 세트는 빠짐 */
+function weekDetail_(rows, setById, items, essays) {
+  const byWeek = {};
+  rows.forEach(function (r) {
+    const id = norm_(r['세트ID']);
+    const set = setById[id];
+    if (!set || set.week == null) return;
+    (byWeek[set.week] = byWeek[set.week] || []).push(r);
+  });
+  const out = {};
+  Object.keys(byWeek).forEach(function (k) {
+    const wr = byWeek[k];
+    out[k] = {
+      sets: wr.slice().sort(function (a, b) { return submittedAt_(a) - submittedAt_(b); }).map(function (r) {
+        const set = setById[norm_(r['세트ID'])];
+        const info = essayInfo_(r, set, items, essays);
+        return {
+          title: set.title,
+          score: info ? info.total : Number(r['점수']),
+          pending: !!(info && !info.done),
+          correct: Number(r['맞은수']) || 0,
+          count: Number(r['문항수']) || 0,
+          wrong: parseNumList_(r['틀린문항']),
+          blank: parseNumList_(r['비운문항'])
+        };
+      }),
+      tags: buildStats_(wr, setById, items).tags
+    };
+  });
+  return out;
 }
 
 function weakTags_(tags) {
