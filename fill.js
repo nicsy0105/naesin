@@ -1,5 +1,5 @@
 /*
- * 내신 클리닉 — '평가 채우기' 버튼 (v1.2.0)
+ * 내신 클리닉 — '평가 채우기' 버튼 (v1.3.0)
  * 맥가이7 [클리닉수업관리 → 출석입력] 화면에서 즐겨찾기 버튼으로 불러 씁니다.
  *
  * 하는 일: 학생마다 '평가' 칸에 있는 틀의 빈 점수만 채움
@@ -8,13 +8,15 @@
  *   (v1.1.0) 학부모 비밀번호를 만든 학생은 맨 끝에 '■ 성적 리포트' 링크 줄을 한 번만 붙임
  *   (v1.2.0) 서답형이 있는 세트: "- 객관식 : / 80", "- 서답형 : / 20", "- 합계 : / 100" 줄 (만점이 같을 때만,
  *            서답형·합계는 서답형 탭을 다 채운 뒤에만)
+ *   (v1.3.0) 채울 테스트를 창에서 고름. 언제 냈든 고른 테스트 결과로 채워서, 시험 친 다음 주 출석 기록에도 채울 수 있음.
+ *            출석입력 날짜에 낸 테스트는 미리 골라 둠. 서버가 예전 버전이면 예전처럼 출석 날짜로 채움.
  * 하지 않는 일: 이미 숫자가 있는 줄, 앱에 없는 줄(자습서·평가문제집 등)은 건드리지 않음.
  *              [저장]·[문자보내기]는 누르지 않음. 선생님이 확인하고 직접 누름.
- * 학생 정보는 이 파일에 없습니다. 선생님 비밀번호로 서버에서 그날 점수만 받아 옵니다.
+ * 학생 정보는 이 파일에 없습니다. 선생님 비밀번호로 서버에서 고른 테스트 점수만 받아 옵니다.
  */
 (function () {
   'use strict';
-  var VERSION = '1.2.0';
+  var VERSION = '1.3.0';
   var TOKEN_KEY = 'naesin.fill.token';
   var PANEL_ID = 'naesin-fill-panel';
 
@@ -88,7 +90,10 @@
     return fetch(API, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: body })
       .then(function (r) { return r.json(); }, function () { throw { message: '서버에 연결하지 못했어요. 인터넷 연결을 확인해 주세요.' }; })
       .then(function (out) {
-        if (!out.ok) throw { message: out.error === '알 수 없는 요청이에요.' ? '서버가 아직 예전 버전이에요. Code.gs를 v1.3.0 이상으로 배포해 주세요.' : out.error, code: out.code };
+        if (!out.ok) {
+          if (out.error === '알 수 없는 요청이에요.') throw { message: '서버가 아직 예전 버전이에요. Code.gs를 v1.7.0 이상으로 배포해 주세요.', code: 'OLD_SERVER' };
+          throw { message: out.error, code: out.code };
+        }
         return out;
       });
   }
@@ -140,7 +145,7 @@
         });
       });
     } else if (es.length > 1 && /-[ \t]*(객관식|서답형|합계|총점)[ \t]*:/.test(out)) {
-      skipped.push('서답형 시험이 같은 날 ' + es.length + '개라 객관식·서답형·합계 줄은 비워 둠');
+      skipped.push('서답형 시험이 ' + es.length + '개 섞여 있어서 객관식·서답형·합계 줄은 비워 둠');
     }
     return { memo: out, changed: out !== memo, filled: filled, skipped: skipped };
   }
@@ -151,10 +156,82 @@
     return memo.replace(/[\r\n]+$/, '') + '\n\n' + LINK_HEAD + '\n' + REPORT_URL;
   }
 
-  function run(token) {
+  function md(d) { var m = /^\d{4}-(\d{2})-(\d{2})$/.exec(d || ''); return m ? Number(m[1]) + '/' + Number(m[2]) : d; }
+  function failed(e) {
+    if (e && e.code === 'AUTH') { setToken(''); return login('로그인이 끝났어요. 다시 입력해 주세요.'); }
+    show(msg(e && e.message ? e.message : '문제가 생겼어요.', '#c8243c'), btn('닫기', function () { panel.remove(); }, true));
+  }
+
+  /* ── v1.3.0: 채울 테스트 고르기 ── */
+  function choose(token) {
+    var s = site();
+    show(msg('테스트 목록을 불러오는 중…'));
+    api('teacherRecentSets', { token: token }).then(function (res) {
+      var schools = {};
+      for (var i = 1; i <= s.ds.length; i++) { var row = s.ds[i]; if (row && row.status !== 'D') schools[norm(row.M_SCHOOL)] = true; }
+      var mine = res.sets.filter(function (x) { return schools[norm(x.school)]; });
+      var others = res.sets.filter(function (x) { return !schools[norm(x.school)]; });
+      var list = h('div', 'margin-top:6px;border-bottom:1px solid #eee');
+      var boxes = [];
+      function item(x) {
+        var lab = h('label', 'display:flex;gap:9px;align-items:flex-start;padding:8px 2px;border-top:1px solid #eee;cursor:pointer');
+        var cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.value = x.setId;
+        cb.setAttribute('style', 'margin-top:3px;width:17px;height:17px;flex:none');
+        cb.checked = x.dates.some(function (d) { return d.date === s.date; }); // 출석 날짜에 낸 테스트는 미리 고름
+        cb.setAttribute('data-title', x.title);
+        boxes.push(cb);
+        var txt = h('div', '');
+        txt.appendChild(h('div', 'font-weight:600', x.title));
+        var when = x.firstDate === x.lastDate ? md(x.firstDate) : md(x.firstDate) + '~' + md(x.lastDate);
+        txt.appendChild(h('div', 'color:#6b6b70;font-size:12px', x.school + ' · ' + (x.kind === '모의평가' ? '모의평가' : '내신') + ' · ' + x.n + '명 제출 · ' + when));
+        lab.appendChild(cb);
+        lab.appendChild(txt);
+        return lab;
+      }
+      mine.slice(0, 12).forEach(function (x) { list.appendChild(item(x)); });
+      var rest = mine.slice(12).concat(others);
+      var more = null;
+      if (rest.length) {
+        more = btn('다른 테스트 더 보기 (' + rest.length + ')', function () { rest.forEach(function (x) { list.appendChild(item(x)); }); more.remove(); }, true);
+      }
+      var err = msg('', '#c8243c');
+      var go = btn('고른 테스트로 채우기', function () {
+        var picked = boxes.filter(function (b) { return b.checked; });
+        if (!picked.length) { err.textContent = '채울 테스트를 하나 이상 골라 주세요.'; return; }
+        run(token, picked.map(function (b) { return b.value; }), picked.map(function (b) { return b.getAttribute('data-title'); }));
+      });
+      show(
+        msg('출석입력 ' + md(s.date) + ' 기록의 평가 칸에 채울 테스트를 골라 주세요. 시험 친 날과 상관없이 고른 테스트 결과로 채워요.'),
+        mine.length ? null : msg('이 출석 목록 학교의 테스트 제출이 아직 없어요.', '#8a5300'),
+        list, more, err, go
+      );
+    }).catch(function (e) {
+      if (e && e.code === 'OLD_SERVER') return runByDate(token);
+      failed(e);
+    });
+  }
+
+  function run(token, ids, titles) {
+    show(msg('점수를 받아 오는 중…'));
+    api('teacherEvalSets', { token: token, setIds: ids }).then(function (res) {
+      apply(res, '고른 테스트: ' + titles.join(', '));
+    }).catch(failed);
+  }
+
+  // 서버가 v1.7.0보다 예전이면 예전 방식(출석 날짜에 낸 테스트)
+  function runByDate(token) {
     var s = site();
     show(msg('점수를 받아 오는 중…'));
     api('teacherEval', { token: token, date: s.date }).then(function (res) {
+      apply(res, res.date + ' 제출 (서버가 예전 버전이라 출석 날짜로 찾았어요)');
+    }).catch(failed);
+  }
+
+  function apply(res, label) {
+    var s = site();
+    (function () {
       var byKey = {};
       res.students.forEach(function (r) { byKey[norm(r.name) + '|' + norm(r.school)] = r; });
       var used = {};
@@ -192,7 +269,7 @@
       var notOnSite = res.students.filter(function (r) { return !used[norm(r.name) + '|' + norm(r.school)]; })
         .map(function (r) { return r.name + ' (' + r.school + ') — 앱에 제출은 있지만 이 출석 목록에 없음'; });
       show(
-        msg(res.date + ' 앱 제출 ' + res.students.length + '명 기준'),
+        msg(label + ' — 앱 제출 ' + res.students.length + '명 기준'),
         done.length ? msg('평가 칸을 채웠어요. 내용을 확인하신 뒤 [저장]을 눌러 주세요.\n(저장 전에는 사이트에 반영되지 않아요)', '#2b7a3d') : msg('새로 채운 학생이 없어요.', '#8a5300'),
         section('채움', done, '#2b7a3d'),
         section('일부만 채움 / 건너뜀', partial, '#8a5300'),
@@ -203,10 +280,7 @@
         section('출석 목록에 없음', notOnSite, '#6b6b70'),
         btn('닫기', function () { panel.remove(); }, true)
       );
-    }).catch(function (e) {
-      if (e && e.code === 'AUTH') { setToken(''); return login('로그인이 끝났어요. 다시 입력해 주세요.'); }
-      show(msg(e && e.message ? e.message : '문제가 생겼어요.', '#c8243c'), btn('닫기', function () { panel.remove(); }, true));
-    });
+    })();
   }
 
   function login(note) {
@@ -214,15 +288,15 @@
     pw.type = 'password';
     pw.placeholder = '내신 클리닉 선생님 비밀번호';
     var err = msg(note || '', '#c8243c');
-    var go = btn('점수 채우기', submit);
+    var go = btn('다음', submit);
     function submit() {
       if (!pw.value) return;
       go.disabled = true;
-      api('teacherLogin', { password: pw.value }).then(function (r) { setToken(r.token); run(r.token); })
+      api('teacherLogin', { password: pw.value }).then(function (r) { setToken(r.token); choose(r.token); })
         .catch(function (e) { go.disabled = false; err.textContent = e.message; pw.value = ''; pw.focus(); });
     }
     pw.addEventListener('keydown', function (ev) { if (ev.key === 'Enter') submit(); });
-    show(msg('출석입력 날짜(' + site().date + ')에 앱에서 제출한 점수로 평가 칸의 빈 점수를 채워요. 저장·발송은 하지 않아요.'), pw, err, go);
+    show(msg('고른 테스트의 앱 점수로 평가 칸의 빈 점수를 채워요. 저장·발송은 하지 않아요.'), pw, err, go);
     pw.focus();
   }
 
@@ -240,5 +314,5 @@
     return;
   }
   var t = getToken();
-  if (t) run(t); else login();
+  if (t) choose(t); else login();
 })();

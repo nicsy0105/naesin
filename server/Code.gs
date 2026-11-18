@@ -6,7 +6,7 @@
  *
  * 서버 파일을 고칠 때마다 아래 버전 번호를 올립니다.
  */
-const SERVER_VERSION = '1.6.1';
+const SERVER_VERSION = '1.7.0';
 
 const CONFIG = {
   TZ: 'Asia/Seoul',
@@ -146,6 +146,8 @@ const ACTIONS = {
   myTrend: apiMyTrend_,          // v1.1.0
   teacherTrend: apiTeacherTrend_, // v1.1.0
   teacherEval: apiTeacherEval_,  // v1.3.0
+  teacherRecentSets: apiTeacherRecentSets_, // v1.7.0
+  teacherEvalSets: apiTeacherEvalSets_,     // v1.7.0
   parentLogin: apiParentLogin_,  // v1.5.0
   parentChangePassword: apiParentChangePassword_, // v1.5.0
   parentReport: apiParentReport_ // v1.5.0
@@ -666,13 +668,57 @@ function unlockParentRows_(rowNumbers) {
 function apiTeacherEval_(req) {
   getSession_(req.token, 'teacher');
   const date = /^\d{4}-\d{2}-\d{2}$/.test(String(req.date || '')) ? String(req.date) : todayKey_();
+  const out = evalStudents_(function (r) { return submissionDate_(r) === date; });
+  return { date: date, students: out };
+}
+
+/* ───────────── 평가 채우기: 테스트를 골라서 (v1.7.0에 추가) ─────────────
+ * 시험 친 날과 다른 날(다음 주)의 출석입력 기록에도 채울 수 있게, 날짜 대신 세트로 고름.
+ */
+function apiTeacherRecentSets_(req) {
+  getSession_(req.token, 'teacher');
+  const setById = setsById_();
+  const by = {};
+  readTable_('submissions').rows.forEach(function (r) {
+    const id = norm_(r['세트ID']);
+    if (!id) return;
+    const d = submissionDate_(r);
+    if (!by[id]) {
+      const set = setById[id];
+      by[id] = { setId: id, title: set ? set.title : String(r['세트이름'] || id), school: set ? set.school : String(r['학교']).trim(),
+        kind: set ? set.kind : KIND_NAESIN, week: set ? set.week : null, n: 0, firstDate: d, lastDate: d, dates: {} };
+    }
+    const x = by[id];
+    x.n++;
+    x.dates[d] = (x.dates[d] || 0) + 1;
+    if (d < x.firstDate) x.firstDate = d;
+    if (d > x.lastDate) x.lastDate = d;
+  });
+  const sets = Object.keys(by).map(function (id) {
+    const x = by[id];
+    x.dates = Object.keys(x.dates).sort().map(function (d) { return { date: d, n: x.dates[d] }; });
+    return x;
+  });
+  sets.sort(function (a, b) { return a.lastDate < b.lastDate ? 1 : a.lastDate > b.lastDate ? -1 : a.title.localeCompare(b.title, 'ko'); });
+  return { sets: sets };
+}
+
+function apiTeacherEvalSets_(req) {
+  getSession_(req.token, 'teacher');
+  const ids = (Array.isArray(req.setIds) ? req.setIds : []).map(norm_).filter(function (x) { return x; });
+  if (!ids.length) throw userErr_('채울 테스트를 하나 이상 골라 주세요.', 'BAD_REQUEST');
+  return { setIds: ids, students: evalStudents_(function (r) { return ids.indexOf(norm_(r['세트ID'])) >= 0; }) };
+}
+
+/** 제출 줄을 골라 학생별 총·단원별 맞은 수, 서답형 합계, 학부모 비밀번호 여부로 묶음 (teacherEval·teacherEvalSets 공용) */
+function evalStudents_(pick) {
   const setById = setsById_();
   const items = loadItems_();
   const by = {};
   const order = [];
   let essays = null;
   readTable_('submissions').rows.forEach(function (r) {
-    if (submissionDate_(r) !== date) return;
+    if (!pick(r)) return;
     const sid = String(r['학생ID']);
     if (!by[sid]) {
       by[sid] = { name: String(r['이름']).trim(), school: String(r['학교']).trim(), correct: 0, count: 0, sets: [], units: {}, unitOrder: [], essays: [] };
@@ -701,13 +747,10 @@ function apiTeacherEval_(req) {
   if (stTable.has('학부모비밀번호해시')) {
     stTable.rows.forEach(function (r) { if (norm_(r['학부모비밀번호해시'])) hasParent[String(r['학생ID'])] = true; });
   }
-  return {
-    date: date,
-    students: order.map(function (sid) {
-      const st = by[sid];
-      return { name: st.name, school: st.school, correct: st.correct, count: st.count, sets: st.sets, units: st.unitOrder.map(function (u) { return st.units[u]; }), parent: !!hasParent[sid], essays: st.essays };
-    })
-  };
+  return order.map(function (sid) {
+    const st = by[sid];
+    return { name: st.name, school: st.school, correct: st.correct, count: st.count, sets: st.sets, units: st.unitOrder.map(function (u) { return st.units[u]; }), parent: !!hasParent[sid], essays: st.essays };
+  });
 }
 
 /* ───────────── 누적 리포트 (v1.1.0에 추가) ─────────────

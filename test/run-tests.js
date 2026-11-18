@@ -1007,6 +1007,58 @@ test('서답형 세트 객관식 점수도 날짜로 바뀐 칸에 휘둘리지 
   assert.strictEqual(today.sets.find((s) => s.setId === 'ESS1').rows[0].essay.mcq, 40);
 });
 
+/* ── v1.7.0: 평가 채우기 — 테스트를 골라서 ── */
+
+test('최근 테스트 목록: 제출이 있는 세트만, 최근 낸 날짜 순, 날짜별 인원 (선생님만)', () => {
+  const g = fresh({ now: '2026-11-15T18:00:00+09:00' });
+  ok(g.call('submit', { token: studentReady(g, '샘플고A', '가상학생01'), setId: 'DEMO-A-1', answers: KEY_A }));
+  addEssaySet(g);
+  g.clock.now = new Date('2026-11-17T18:00:00+09:00').getTime();
+  ok(g.call('submit', { token: studentReady(g, '샘플고A', '가상학생02'), setId: 'DEMO-A-1', answers: KEY_A }));
+  ok(g.call('submit', { token: studentReady(g, '샘플고A', '가상학생03'), setId: 'ESS 1', answers: ESS_KEY }));
+  const r = ok(g.call('teacherRecentSets', { token: teacherReady(g) }));
+  assert.deepStrictEqual(r.sets.map((x) => [x.setId, x.n, x.firstDate, x.lastDate]), [['DEMO-A-1', 2, '2026-11-15', '2026-11-17'], ['ESS1', 1, '2026-11-17', '2026-11-17']]);
+  assert.deepStrictEqual(r.sets[0].dates, [{ date: '2026-11-15', n: 1 }, { date: '2026-11-17', n: 1 }]);
+  assert.deepStrictEqual([r.sets[1].kind, r.sets[1].school], ['모의평가', '샘플고A']);
+  fail(g.call('teacherRecentSets', { token: studentReady(g, '샘플고A', '가상학생04') }), 'AUTH');
+});
+
+test('고른 테스트 결과: 시험 친 날과 상관없이, 늦게 낸 학생도 포함, 다른 테스트는 빠짐', () => {
+  const g = fresh({ now: '2026-11-15T18:00:00+09:00' });
+  addEssaySet(g);
+  const t1 = studentReady(g, '샘플고A', '가상학생01');
+  ok(g.call('submit', { token: t1, setId: 'ESS 1', answers: ESS_KEY }));
+  ok(g.call('submit', { token: t1, setId: 'DEMO-A-1', answers: KEY_A }));
+  g.clock.now = new Date('2026-11-16T18:00:00+09:00').getTime();
+  ok(g.call('submit', { token: studentReady(g, '샘플고A', '가상학생02'), setId: 'ESS 1', answers: { 1: [1], 2: [2], 3: [5], 4: [] } }));
+  g.ctx.makeEssayRows_([setRowOf(g, 'ESS 1')]);
+  setEssay(g, '가상학생01', [4, 3, 4, 2, 4]);
+  g.clock.now = new Date('2026-11-18T15:00:00+09:00').getTime(); // 다음 주 출석 기록에서 채우는 날
+  const tt = teacherReady(g);
+  assert.deepStrictEqual(ok(g.call('teacherEval', { token: tt })).students, [], '예전 방식(오늘 날짜)으로는 못 찾음');
+  const r = ok(g.call('teacherEvalSets', { token: tt, setIds: ['ESS 1'] }));
+  assert.deepStrictEqual(r.setIds, ['ESS1']);
+  const by = Object.fromEntries(r.students.map((x) => [x.name, x]));
+  assert.deepStrictEqual(Object.keys(by).sort(), ['가상학생01', '가상학생02']);
+  assert.deepStrictEqual([by.가상학생01.correct, by.가상학생01.count, by.가상학생01.sets], [4, 4, ['[가짜] 서답형 포함 모의평가']], 'DEMO-A-1은 안 섞임');
+  assert.deepStrictEqual(by.가상학생01.units, [{ unit: '문법', correct: 4, total: 4 }]);
+  const e = by.가상학생01.essays[0];
+  assert.deepStrictEqual([e.mcq, e.essay, e.total, e.done], [80, 17, 97, true]);
+  assert.deepStrictEqual([by.가상학생02.correct, by.가상학생02.essays[0].done], [2, false]);
+  const two = ok(g.call('teacherEvalSets', { token: tt, setIds: ['ESS1', 'DEMO-A-1'] }));
+  assert.strictEqual(two.students.find((x) => x.name === '가상학생01').count, 4 + Object.keys(KEY_A).length, '여러 개 고르면 합쳐서');
+  fail(g.call('teacherEvalSets', { token: tt, setIds: [] }), 'BAD_REQUEST');
+});
+
+test('날짜 방식(teacherEval)은 예전과 똑같이 동작 (v1.7.0에서 안쪽만 정리)', () => {
+  const g = fresh({ now: '2026-11-07T18:00:00+09:00' });
+  ok(g.call('submit', { token: studentReady(g, '샘플고A', '가상학생01'), setId: 'DEMO-A-1', answers: KEY_A }));
+  const r = ok(g.call('teacherEval', { token: teacherReady(g), date: '2026-11-07' }));
+  assert.deepStrictEqual(Object.keys(r).sort(), ['date', 'ok', 'students', 'version']);
+  assert.deepStrictEqual(Object.keys(r.students[0]).sort(), ['correct', 'count', 'essays', 'name', 'parent', 'school', 'sets', 'units']);
+  assert.deepStrictEqual(ok(g.call('teacherEval', { token: teacherReady(g), date: '2026-11-08' })).students, []);
+});
+
 /* ── 실행 ── */
 
 let passed = 0;

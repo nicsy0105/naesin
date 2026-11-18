@@ -10,6 +10,8 @@
 
 - 문항 번호는 1, 2, 3…으로 새로 매겨지고(한글 자동 번호), 문항 끝에 (1주차 7번)처럼 원래 번호를 붙입니다.
 - '※ 다음 글을 읽고…' 지문에 딸린 문항은, 그중 하나만 틀려도 지문을 같이 넣습니다.
+  지문에 딸린 문항: 지문 바로 뒤에 이어지면서 '윗글'이나 지문 속 (가)·㉠·ⓐ·「작품」·‘인용구’를 가리키는 문항
+  (2026-11-18: 문학 클리닉에서 '윗글'로 시작하지 않는 문항의 지문이 빠지던 것을 고침)
 - 정답과 해설은 원본의 미주를 그대로 가져와 문서 맨 뒤에 나옵니다.
 - 이 파일에는 학생 정보가 없습니다. 학생 이름과 틀린 번호는 실행할 때만 넣습니다.
 """
@@ -57,6 +59,24 @@ def top_text(p):
     return ''.join(re.findall(r'<hp:t>([^<]*)</hp:t>', p))
 
 
+MARK = r'(?:\([가-하]\)|[\u3260-\u327b]|[\u24d0-\u24e9])'  # (가) ㉠…㉻ ㉮… ⓐ…ⓩ
+
+
+def refers_to_passage(stem, passage_text):
+    """발문이 앞 지문을 보고 푸는 문항인지: 윗글 / 지문에 있는 (가)·㉠·ⓐ / 「작품」 / 지문에 있는 ‘인용구’"""
+    if '윗글' in stem or '윗 글' in stem:
+        return True
+    flat = re.sub(r'\s+', '', passage_text)
+    # '〈보기〉의 ㉠~㉤'처럼 〈보기〉에 딸린 표시는 지문 표시가 아님 (1주차 문법 문항)
+    own = re.sub(r'〈보기〉의\s*' + MARK + r'(?:\s*[~,·과와및]\s*' + MARK + r')*', '', stem)
+    if any(m in passage_text for m in re.findall(MARK, own)):
+        return True
+    if any(t in passage_text for t in re.findall(r'「([^」]+)」', own)):
+        return True
+    quotes = re.findall(r'[‘“]([^’”]+)[’”]', own)
+    return any(re.sub(r'\s+', '', q) and re.sub(r'\s+', '', q) in flat for q in quotes)
+
+
 def find_blocks(paras):
     """문항 번호 → (지문 블록 또는 None, 문항 블록)"""
     stems = [i for i, p in enumerate(paras) if style_of(p) == STYLE_STEM]
@@ -66,10 +86,12 @@ def find_blocks(paras):
     owner = {}
     for pi in passages:
         followers = [s for s in stems if s > pi and all(not (pi < x < s) for x in passages)]
-        # 지문 바로 뒤에 이어지는 '윗글' 문항들을 지문에 묶음. 하나도 없으면 바로 뒤 문항 하나에 묶음
+        ptext = ''.join(top_text(p) for p in paras[pi:nxt(pi)])
+        # 지문 바로 뒤에 이어지면서 그 지문을 가리키는 문항들을 묶음(첫 독립 문항에서 멈춤).
+        # 하나도 없으면 바로 뒤 문항 하나에 묶음
         group = []
         for s in followers:
-            if '윗글' not in top_text(paras[s]):
+            if not refers_to_passage(top_text(paras[s]), ptext):
                 break
             group.append(s)
         if not group and followers:

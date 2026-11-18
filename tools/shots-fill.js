@@ -36,7 +36,16 @@ const { start } = require('./devserver');
     await p.waitForFunction(() => ((document.getElementById('naesin-fill-panel') || {}).textContent || '').includes('틀렸어요'));
     await p.fill('#naesin-fill-panel input[type=password]', 'demo-teacher');
     await p.keyboard.press('Enter');
+    // v1.3.0: 채울 테스트 고르기 — 출석 날짜(11/7)에 낸 테스트는 미리 골라 둠
+    await p.waitForFunction(() => ((document.getElementById('naesin-fill-panel') || {}).textContent || '').includes('채울 테스트를 골라'));
+    const boxes = await p.$$eval('#naesin-fill-panel input[type=checkbox]', (n) => n.map((x) => [x.getAttribute('data-title'), x.checked]));
+    assert.ok(boxes.length >= 3, JSON.stringify(boxes));
+    assert.deepStrictEqual(boxes.filter((b) => b[1]).map((b) => b[0]).sort(), ['[가짜] 고전시가 확인 테스트', '[가짜] 현대소설 확인 테스트'], JSON.stringify(boxes));
+    assert.ok(boxes.some((b) => b[0] === '[가짜] 샘플고A 기말 3회 모의평가 (서답형 포함)' && !b[1]));
+    await p.screenshot({ path: 'shots/f4-choose.png', fullPage: true });
+    await p.click('text=고른 테스트로 채우기');
     await p.waitForFunction(() => ((document.getElementById('naesin-fill-panel') || {}).textContent || '').includes('채움 ('));
+    assert.ok((await p.textContent('#naesin-fill-panel')).includes('고른 테스트: [가짜]'));
     await p.screenshot({ path: 'shots/f2-filled.png', fullPage: true });
 
     const memo = await p.evaluate(() => Array.from({ length: dsLST1.length }, (_, i) => dsLST1[i + 1]));
@@ -63,18 +72,25 @@ const { start } = require('./devserver');
 
     // 한 번 더 누르면: 비밀번호를 다시 묻지 않고, 이미 채운 줄은 건드리지 않음
     await p.evaluate(code);
+    await p.waitForFunction(() => ((document.getElementById('naesin-fill-panel') || {}).textContent || '').includes('채울 테스트를 골라'));
+    await p.click('text=고른 테스트로 채우기');
     await p.waitForFunction(() => ((document.getElementById('naesin-fill-panel') || {}).textContent || '').includes('새로 채운 학생이 없어요'));
     const again = await p.evaluate(() => [dsLST1[1].CC_MEMO, dsLST1[2].CC_MEMO]);
     assert.deepStrictEqual(again, [m(0), m(1)], '링크 줄은 두 번 들어가지 않음');
 
-    // v1.2.0: 서답형이 있는 모의평가 (2026-11-06) — 객관식·서답형·합계 줄
+    // v1.2.0: 서답형이 있는 모의평가 — v1.3.0부터는 시험 친 날(11/6)과 다른 출석 기록(11/7)에서 그 테스트를 골라 채움
     await p.evaluate(() => {
-      document.getElementById('txt_yyyymmdd').value = '2026-11-06';
       const T = '[샘플고A 기말 모의평가 결과]\n■ 모의평가 결과\n- 총 / 21문항\n- 문법 :  / 15\n- 문학 :  / 6\n- 객관식 :  / 80\n- 서답형 :  / 20\n- 합계 :  / 100\n';
       for (let i = 1; i <= dsLST1.length; i++) { dsLST1[i].CC_MEMO = T; dsLST1[i].status = ''; }
       render();
     });
     await p.evaluate(code);
+    await p.waitForFunction(() => ((document.getElementById('naesin-fill-panel') || {}).textContent || '').includes('채울 테스트를 골라'));
+    await p.click('text=[가짜] 고전시가 확인 테스트');                         // 미리 골라 둔 것 해제
+    await p.click('text=[가짜] 현대소설 확인 테스트');
+    await p.click('text=[가짜] 샘플고A 기말 3회 모의평가 (서답형 포함)');      // 지난 시험 고르기
+    await p.screenshot({ path: 'shots/f4-choose-essay.png', fullPage: true });
+    await p.click('text=고른 테스트로 채우기');
     await p.waitForFunction(() => ((document.getElementById('naesin-fill-panel') || {}).textContent || '').includes('채움 ('));
     await p.screenshot({ path: 'shots/f3-filled-essay.png', fullPage: true });
     const em = await p.evaluate(() => Array.from({ length: dsLST1.length }, (_, i) => dsLST1[i + 1].CC_MEMO));
@@ -83,6 +99,27 @@ const { start } = require('./devserver');
     assert.ok(em[0].endsWith(LINK) && em[1].endsWith(LINK), '리포트 링크 줄도 그대로 동작');
     assert.ok(em[3].includes('- 객관식 : 34.7 / 80') && em[3].includes('- 서답형 :  / 20') && em[3].includes('- 합계 :  / 100'), '서답형 채점 전이면 서답형·합계는 비워 둠: ' + em[3]);
     assert.ok((await p.textContent('#naesin-fill-panel')).includes('서답형 채점 전'));
+
+    // 아무것도 안 고르고 누르면 안내
+    await p.evaluate(code);
+    await p.waitForFunction(() => ((document.getElementById('naesin-fill-panel') || {}).textContent || '').includes('채울 테스트를 골라'));
+    await p.$$eval('#naesin-fill-panel input[type=checkbox]', (n) => n.forEach((x) => { x.checked = false; }));
+    await p.click('text=고른 테스트로 채우기');
+    await p.waitForFunction(() => ((document.getElementById('naesin-fill-panel') || {}).textContent || '').includes('하나 이상 골라'));
+
+    // 서버가 예전 버전(v1.6.1 이하)이면 예전처럼 출석 날짜로 채움
+    await p.route('**/*', (route) => {
+      const body = route.request().postData() || '';
+      if (route.request().method() === 'POST' && body.includes('"teacherRecentSets"')) {
+        return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: false, error: '알 수 없는 요청이에요.' }) });
+      }
+      return route.continue();
+    });
+    await p.evaluate(() => { dsLST1[1].CC_MEMO = '- 총 / 12문항\n- 고전시가 :  / 12\n'; dsLST1[1].status = ''; render(); });
+    await p.evaluate(code);
+    await p.waitForFunction(() => ((document.getElementById('naesin-fill-panel') || {}).textContent || '').includes('예전 버전이라 출석 날짜로'));
+    assert.ok((await p.evaluate(() => dsLST1[1].CC_MEMO)).includes('- 총 11 / 12문항'));
+    await p.unroute('**/*');
 
     // 다른 화면에서 누르면 안내만
     await p.goto(url + '/teacher.html');
